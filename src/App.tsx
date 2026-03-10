@@ -4,71 +4,83 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Globe, Phone, Wand2, Megaphone, Bell, HelpCircle, 
-  MoreVertical, List, Plus, Filter, ArrowUpDown, 
-  Search, Settings, ChevronsUpDown 
+import {
+  Globe, Phone, Wand2, Megaphone, Bell, HelpCircle,
+  MoreVertical, List, Plus, Filter, ArrowUpDown,
+  Search, Settings, ChevronsUpDown, Star, ImageIcon
 } from 'lucide-react';
 
+// URL base de tu API Django en Railway
+const API_BASE_URL = 'https://web-production-2573f.up.railway.app';
+
 const columns = [
-  { key: 'id', label: 'Id' },
-  { key: 'precio', label: 'Prec...' },
-  { key: 'habitaciones', label: 'Habi...' },
-  { key: 'imagenes', label: 'Imagene...' },
-  { key: 'metros', label: 'Metr...' },
-  { key: 'aLaVenta', label: '¿La ...' },
-  { key: 'tiene1', label: '¿Tie...' },
-  { key: 'tiene2', label: '¿Tie...' },
-  { key: 'deja', label: '¿Dej...' },
-  { key: 'tiene3', label: '¿Tie...' },
-  { key: 'christian', label: 'christian' },
-  { key: 'zona', label: 'Zona' },
+  { key: 'id', label: 'ID' },
+  { key: 'title', label: 'Título' },
+  { key: 'price', label: 'Precio' },
+  { key: 'beds', label: 'Habitaciones' },
+  { key: 'sqm', label: 'Metros²' },
+  { key: 'location', label: 'Zona' },
+  { key: 'type', label: 'Tipo' },
+  { key: 'features', label: 'Características' },
+  { key: 'images', label: 'Imágenes' },
+  { key: 'isFeatured', label: 'Destacada' },
 ];
 
 export default function App() {
-  // 1. Estados para manejar los datos, la carga y los errores
   const [propertiesData, setPropertiesData] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // 2. Efecto para leer el location_id de la URL o del postMessage de GHL
+  // Función para cargar propiedades desde la API de Django
+  const fetchProperties = async (agencyId: string) => {
+    try {
+      const url = `${API_BASE_URL}/front/api/properties/?agency_id=${agencyId}`;
+      console.log("📡 Llamando a API:", url);
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Datos recibidos de la API:", data);
+
+      // La API usa paginación, los resultados vienen en "results"
+      const properties = data.results || data;
+      setPropertiesData(Array.isArray(properties) ? properties : []);
+      setTotalCount(data.count || properties.length || 0);
+
+    } catch (err: any) {
+      console.error("❌ Error al llamar a la API:", err);
+      setApiError(err.message);
+      setPropertiesData([]);
+    }
+  };
+
   useEffect(() => {
-    // PASO 1: Intentar leer el location_id directamente de la URL
+    // PASO 1: Leer location_id de la URL
     const urlParams = new URLSearchParams(window.location.search);
     const locationFromUrl = urlParams.get('location_id') || urlParams.get('locationId');
 
     if (locationFromUrl) {
-      // ¡Tenemos el location_id desde la URL! 
       console.log("✅ location_id recibido por URL:", locationFromUrl);
       setLocationId(locationFromUrl);
-
-      // TODO: Aquí llamarás a tu API de Django con el locationId
-      // fetch(`https://tu-api.com/propiedades?location_id=${locationFromUrl}`)
-      //   .then(res => res.json())
-      //   .then(data => setPropertiesData(data))
-
-      // Por ahora, data de prueba para ver el diseño:
-      setPropertiesData([
-        { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
-        { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
-      ]);
-      setLoading(false);
-      return; // No necesitamos postMessage si ya tenemos el ID
+      fetchProperties(locationFromUrl).finally(() => setLoading(false));
+      return;
     }
 
-    // PASO 2: Fallback → intentar postMessage con GHL (por si acaso)
+    // PASO 2: Fallback → postMessage con GHL
     let isResolved = false;
 
     const messageHandler = (event: MessageEvent) => {
       if (event.data.message === 'REQUEST_USER_DATA_RESPONSE') {
         console.log("✅ GHL respondió por postMessage:", event.data.payload);
         isResolved = true;
-        
-        setPropertiesData([
-          { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
-          { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
-        ]);
+        // TODO: extraer location_id del payload de GHL
         setLoading(false);
       }
     };
@@ -78,7 +90,7 @@ export default function App() {
 
     const timer = setTimeout(() => {
       if (!isResolved) {
-        setError("No se recibió el location_id. Asegúrate de que la URL del Marketplace incluya ?location_id={{location_id}}");
+        setError("No se recibió el location_id.");
         setLoading(false);
       }
     }, 3000);
@@ -89,36 +101,37 @@ export default function App() {
     };
   }, []);
 
-  // 3. Pantallas de Carga y Error
+  // Pantalla de carga
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-600 font-medium">Cargando datos de la agencia...</p>
+        <p className="text-gray-600 font-medium">Cargando propiedades...</p>
       </div>
     );
   }
 
+  // Pantalla de error (sin location_id)
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full text-center border-t-4 border-red-500">
           <h2 className="text-xl font-bold text-gray-900 mb-2">Modo Diagnóstico</h2>
           <p className="text-gray-600 mb-4">No se recibió el <code className="bg-gray-100 px-1 rounded">location_id</code>.</p>
-          
+
           <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono break-all mb-4 border border-gray-300">
-            <span className="text-blue-600 font-bold">URL actual:</span><br/>
+            <span className="text-blue-600 font-bold">URL actual:</span><br />
             {window.location.href}
-            <br/><br/>
-            <span className="text-purple-600 font-bold">Parámetros detectados:</span><br/>
+            <br /><br />
+            <span className="text-purple-600 font-bold">Parámetros detectados:</span><br />
             {window.location.search === "" ? "❌ Ningún parámetro recibido" : window.location.search}
           </div>
 
           <div className="bg-yellow-50 p-4 rounded text-left text-sm border border-yellow-300">
-            <span className="text-yellow-700 font-bold">💡 Solución:</span><br/>
-            <p className="text-yellow-800 mt-1">En la configuración de tu app en el Marketplace de GHL, cambia la URL a:</p>
+            <span className="text-yellow-700 font-bold">💡 Solución:</span><br />
+            <p className="text-yellow-800 mt-1">Configura la URL con tu location_id real:</p>
             <code className="block bg-white mt-2 p-2 rounded border border-yellow-200 text-xs">
-              https://pagprop.vercel.app/?location_id=&#123;&#123;location_id&#125;&#125;
+              https://pagprop.vercel.app/?location_id=TU_LOCATION_ID
             </code>
           </div>
         </div>
@@ -126,7 +139,7 @@ export default function App() {
     );
   }
 
-  // 4. Tu interfaz original (Renderizado cuando ya hay datos)
+  // Dashboard principal
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
       {/* Top Navigation Bar */}
@@ -162,7 +175,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-semibold text-gray-900">Propiedades</h1>
             <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
-              {propertiesData.length} Propiedades
+              {totalCount} Propiedades
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -207,9 +220,9 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Buscar" 
+              <input
+                type="text"
+                placeholder="Buscar"
                 className="pl-9 pr-4 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
               />
             </div>
@@ -219,6 +232,13 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Error de API */}
+        {apiError && (
+          <div className="mx-6 mb-4 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+            ⚠️ Error al conectar con la API: {apiError}
+          </div>
+        )}
 
         {/* Data Table */}
         <div className="flex-1 overflow-x-auto px-6 pb-6">
@@ -246,24 +266,74 @@ export default function App() {
               ) : (
                 propertiesData.map((row, index) => (
                   <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.id}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.precio}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.habitaciones}</td>
+                    {/* ID */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800 font-mono">
+                      {row.id ? row.id.substring(0, 8) + '...' : '-'}
+                    </td>
+                    {/* Título */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs truncate">
+                      {row.title || '-'}
+                    </td>
+                    {/* Precio */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800 font-medium">
+                      {row.price ? `${Number(row.price).toLocaleString('es-ES')} €` : '-'}
+                    </td>
+                    {/* Habitaciones */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
+                      {row.beds ?? '-'}
+                    </td>
+                    {/* Metros */}
                     <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                      {row.imagenes && (
-                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200">
-                          {row.imagenes}
-                        </span>
+                      {row.sqm ? `${row.sqm} m²` : '-'}
+                    </td>
+                    {/* Zona */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
+                        {row.location || 'Sin zona'}
+                      </span>
+                    </td>
+                    {/* Tipo */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.type === 'Villa' ? 'bg-purple-50 text-purple-700' :
+                          row.type === 'Studio' ? 'bg-orange-50 text-orange-700' :
+                            'bg-green-50 text-green-700'
+                        }`}>
+                        {row.type || '-'}
+                      </span>
+                    </td>
+                    {/* Características */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                      <div className="flex flex-wrap gap-1">
+                        {row.features && row.features.length > 0 ? (
+                          row.features.map((f: string, i: number) => (
+                            <span key={i} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs">
+                              {f}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-gray-400 text-xs">—</span>
+                        )}
+                      </div>
+                    </td>
+                    {/* Imágenes */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
+                      {row.images && row.images.length > 0 ? (
+                        <div className="flex items-center gap-1">
+                          <ImageIcon size={14} className="text-green-500" />
+                          <span className="text-xs">{row.images.length}</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">0</span>
                       )}
                     </td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.metros}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.aLaVenta}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene1}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene2}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.deja}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene3}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.christian}</td>
-                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.zona}</td>
+                    {/* Destacada */}
+                    <td className="border-r border-gray-200 p-3 text-sm text-center">
+                      {row.isFeatured ? (
+                        <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="p-3 text-sm text-gray-800"></td>
                   </tr>
                 ))
