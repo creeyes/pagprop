@@ -30,46 +30,59 @@ export default function App() {
   const [propertiesData, setPropertiesData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [locationId, setLocationId] = useState<string | null>(null);
 
-  // 2. Efecto para leer GHL y llamar a Django al cargar la página
+  // 2. Efecto para leer el location_id de la URL o del postMessage de GHL
   useEffect(() => {
-    let isTimeoutTriggered = false;
+    // PASO 1: Intentar leer el location_id directamente de la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const locationFromUrl = urlParams.get('location_id') || urlParams.get('locationId');
 
-    // 1. Preparamos el "micrófono" para escuchar la respuesta de GHL
+    if (locationFromUrl) {
+      // ¡Tenemos el location_id desde la URL! 
+      console.log("✅ location_id recibido por URL:", locationFromUrl);
+      setLocationId(locationFromUrl);
+
+      // TODO: Aquí llamarás a tu API de Django con el locationId
+      // fetch(`https://tu-api.com/propiedades?location_id=${locationFromUrl}`)
+      //   .then(res => res.json())
+      //   .then(data => setPropertiesData(data))
+
+      // Por ahora, data de prueba para ver el diseño:
+      setPropertiesData([
+        { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
+        { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
+      ]);
+      setLoading(false);
+      return; // No necesitamos postMessage si ya tenemos el ID
+    }
+
+    // PASO 2: Fallback → intentar postMessage con GHL (por si acaso)
+    let isResolved = false;
+
     const messageHandler = (event: MessageEvent) => {
-      // Verificamos que el mensaje sea la respuesta oficial de GHL
       if (event.data.message === 'REQUEST_USER_DATA_RESPONSE') {
-        console.log("¡GHL ha respondido! Payload encriptado:", event.data.payload);
-        
-        // ¡BINGO! Estamos dentro de GHL de forma segura.
-        // Aquí es donde en el futuro enviaremos "event.data.payload" a tu servidor de Django.
-        // Por ahora, inyectamos la data de prueba para que puedas ver tu diseño:
+        console.log("✅ GHL respondió por postMessage:", event.data.payload);
+        isResolved = true;
         
         setPropertiesData([
           { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
           { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
         ]);
-        
         setLoading(false);
-        isTimeoutTriggered = true; // Apagamos la alarma de error
       }
     };
 
-    // 2. Encendemos el receptor de mensajes
     window.addEventListener('message', messageHandler);
-
-    // 3. Le "tocamos la puerta" a GHL pidiendo el contexto de la agencia
     window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*');
 
-    // 4. Temporizador de seguridad: Si no estamos dentro de GHL, nadie responderá
     const timer = setTimeout(() => {
-      if (!isTimeoutTriggered) {
-        setError("Seguridad: No se detectó el entorno de Go High Level o la sesión caducó.");
+      if (!isResolved) {
+        setError("No se recibió el location_id. Asegúrate de que la URL del Marketplace incluya ?location_id={{location_id}}");
         setLoading(false);
       }
-    }, 3000); // Esperamos 3 segundos
+    }, 3000);
 
-    // Limpieza de memoria
     return () => {
       window.removeEventListener('message', messageHandler);
       clearTimeout(timer);
@@ -91,14 +104,22 @@ export default function App() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full text-center border-t-4 border-red-500">
           <h2 className="text-xl font-bold text-gray-900 mb-2">Modo Diagnóstico</h2>
-          <p className="text-gray-600 mb-4">GHL no está enviando el locationId. Veamos qué está enviando realmente:</p>
+          <p className="text-gray-600 mb-4">No se recibió el <code className="bg-gray-100 px-1 rounded">location_id</code>.</p>
           
           <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono break-all mb-4 border border-gray-300">
-            <span className="text-blue-600 font-bold">URL Completa que lee Vercel:</span><br/>
+            <span className="text-blue-600 font-bold">URL actual:</span><br/>
             {window.location.href}
             <br/><br/>
             <span className="text-purple-600 font-bold">Parámetros detectados:</span><br/>
-            {window.location.search === "" ? "¡GHL NO ENVIÓ NINGÚN PARÁMETRO!" : window.location.search}
+            {window.location.search === "" ? "❌ Ningún parámetro recibido" : window.location.search}
+          </div>
+
+          <div className="bg-yellow-50 p-4 rounded text-left text-sm border border-yellow-300">
+            <span className="text-yellow-700 font-bold">💡 Solución:</span><br/>
+            <p className="text-yellow-800 mt-1">En la configuración de tu app en el Marketplace de GHL, cambia la URL a:</p>
+            <code className="block bg-white mt-2 p-2 rounded border border-yellow-200 text-xs">
+              https://pagprop.vercel.app/?location_id=&#123;&#123;location_id&#125;&#125;
+            </code>
           </div>
         </div>
       </div>
