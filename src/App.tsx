@@ -33,48 +33,47 @@ export default function App() {
 
   // 2. Efecto para leer GHL y llamar a Django al cargar la página
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const locationId = urlParams.get('locationId');
-    const sessionKey = urlParams.get('sessionKey');
+    let isTimeoutTriggered = false;
 
-    if (locationId) {
-      // AQUÍ DEBERÁS PONER LA URL REAL DE TU SERVIDOR DJANGO MÁS ADELANTE
-      // Por ahora, he puesto una URL de ejemplo.
-      const apiUrl = `https://api.tu-django.com/obtener-propiedades/?locationId=${locationId}`;
-      
-      fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${sessionKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Error en la respuesta del servidor');
-        }
-        return response.json();
-      })
-      .then(data => {
-        setPropertiesData(data); // Guardamos los datos reales
-        setLoading(false); // Quitamos la pantalla de carga
-      })
-      .catch(err => {
-        console.error("Error conectando con Django:", err);
-        // Si falla la API (como ahora que aún no existe), para que puedas seguir viendo 
-        // tu diseño, inyectaremos unos datos de prueba temporalmente.
+    // 1. Preparamos el "micrófono" para escuchar la respuesta de GHL
+    const messageHandler = (event: MessageEvent) => {
+      // Verificamos que el mensaje sea la respuesta oficial de GHL
+      if (event.data.message === 'REQUEST_USER_DATA_RESPONSE') {
+        console.log("¡GHL ha respondido! Payload encriptado:", event.data.payload);
+        
+        // ¡BINGO! Estamos dentro de GHL de forma segura.
+        // Aquí es donde en el futuro enviaremos "event.data.payload" a tu servidor de Django.
+        // Por ahora, inyectamos la data de prueba para que puedas ver tu diseño:
+        
         setPropertiesData([
           { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
           { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
         ]);
+        
         setLoading(false);
-      });
+        isTimeoutTriggered = true; // Apagamos la alarma de error
+      }
+    };
 
-    } else {
-      // Seguridad: Si se abre fuera de GHL, bloqueamos la vista
-      setError("Acceso denegado. Esta página solo funciona dentro de Go High Level.");
-      setLoading(false);
-    }
+    // 2. Encendemos el receptor de mensajes
+    window.addEventListener('message', messageHandler);
+
+    // 3. Le "tocamos la puerta" a GHL pidiendo el contexto de la agencia
+    window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*');
+
+    // 4. Temporizador de seguridad: Si no estamos dentro de GHL, nadie responderá
+    const timer = setTimeout(() => {
+      if (!isTimeoutTriggered) {
+        setError("Seguridad: No se detectó el entorno de Go High Level o la sesión caducó.");
+        setLoading(false);
+      }
+    }, 3000); // Esperamos 3 segundos
+
+    // Limpieza de memoria
+    return () => {
+      window.removeEventListener('message', messageHandler);
+      clearTimeout(timer);
+    };
   }, []);
 
   // 3. Pantallas de Carga y Error
