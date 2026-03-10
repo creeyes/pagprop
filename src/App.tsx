@@ -90,9 +90,17 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center border-t-4 border-red-500">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Error de Autenticación</h2>
-          <p className="text-gray-600">{error}</p>
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full text-center border-t-4 border-red-500">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Modo Diagnóstico</h2>
+          <p className="text-gray-600 mb-4">GHL no está enviando el locationId. Veamos qué está enviando realmente:</p>
+          
+          <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono break-all mb-4 border border-gray-300">
+            <span className="text-blue-600 font-bold">URL Completa que lee Vercel:</span><br/>
+            {window.location.href}
+            <br/><br/>
+            <span className="text-purple-600 font-bold">Parámetros detectados:</span><br/>
+            {window.location.search === "" ? "¡GHL NO ENVIÓ NINGÚN PARÁMETRO!" : window.location.search}
+          </div>
         </div>
       </div>
     );
