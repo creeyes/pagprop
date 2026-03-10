@@ -3,22 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Globe, Phone, Wand2, Megaphone, Bell, HelpCircle, 
   MoreVertical, List, Plus, Filter, ArrowUpDown, 
   Search, Settings, ChevronsUpDown 
 } from 'lucide-react';
-
-const propertiesData = [
-  { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: '' },
-  { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: '' },
-  { id: 3, precio: '$12', habitaciones: 13333, imagenes: '', metros: 123456, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: '', zona: '' },
-  { id: 5, precio: '', habitaciones: '', imagenes: '', metros: '', aLaVenta: '', tiene1: '', tiene2: '', deja: '', tiene3: '', christian: '', zona: '' },
-  { id: 6, precio: '$12345', habitaciones: 4, imagenes: 'thumb-8215...', metros: 123, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web', zona: '' },
-  { id: 5, precio: '$400', habitaciones: 2, imagenes: 'leon_5704_6...', metros: 3, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web', zona: '' },
-  { id: 4, precio: '', habitaciones: '', imagenes: '', metros: '', aLaVenta: '', tiene1: '', tiene2: '', deja: '', tiene3: '', christian: '', zona: '' },
-];
 
 const columns = [
   { key: 'id', label: 'Id' },
@@ -36,6 +26,79 @@ const columns = [
 ];
 
 export default function App() {
+  // 1. Estados para manejar los datos, la carga y los errores
+  const [propertiesData, setPropertiesData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // 2. Efecto para leer GHL y llamar a Django al cargar la página
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const locationId = urlParams.get('locationId');
+    const sessionKey = urlParams.get('sessionKey');
+
+    if (locationId) {
+      // AQUÍ DEBERÁS PONER LA URL REAL DE TU SERVIDOR DJANGO MÁS ADELANTE
+      // Por ahora, he puesto una URL de ejemplo.
+      const apiUrl = `https://api.tu-django.com/obtener-propiedades/?locationId=${locationId}`;
+      
+      fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${sessionKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Error en la respuesta del servidor');
+        }
+        return response.json();
+      })
+      .then(data => {
+        setPropertiesData(data); // Guardamos los datos reales
+        setLoading(false); // Quitamos la pantalla de carga
+      })
+      .catch(err => {
+        console.error("Error conectando con Django:", err);
+        // Si falla la API (como ahora que aún no existe), para que puedas seguir viendo 
+        // tu diseño, inyectaremos unos datos de prueba temporalmente.
+        setPropertiesData([
+          { id: 1, precio: '$5', habitaciones: 5, imagenes: '', metros: 6, aLaVenta: 'A la venta', tiene1: 'Si', tiene2: 'Si', deja: 'Si', tiene3: 'Si', christian: 'web, foto...', zona: 'Centro' },
+          { id: 2, precio: '$4', habitaciones: 6, imagenes: '', metros: 5, aLaVenta: 'A la venta', tiene1: 'No', tiene2: 'No', deja: 'No', tiene3: 'No', christian: 'web', zona: 'Norte' },
+        ]);
+        setLoading(false);
+      });
+
+    } else {
+      // Seguridad: Si se abre fuera de GHL, bloqueamos la vista
+      setError("Acceso denegado. Esta página solo funciona dentro de Go High Level.");
+      setLoading(false);
+    }
+  }, []);
+
+  // 3. Pantallas de Carga y Error
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-gray-600 font-medium">Cargando datos de la agencia...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center border-t-4 border-red-500">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Error de Autenticación</h2>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Tu interfaz original (Renderizado cuando ya hay datos)
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
       {/* Top Navigation Bar */}
@@ -71,7 +134,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-semibold text-gray-900">Propiedades</h1>
             <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
-              7 Propiedades
+              {propertiesData.length} Propiedades
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -146,29 +209,37 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {propertiesData.map((row, index) => (
-                <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.id}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.precio}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.habitaciones}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                    {row.imagenes && (
-                      <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200">
-                        {row.imagenes}
-                      </span>
-                    )}
+              {propertiesData.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 1} className="text-center py-8 text-gray-500">
+                    No se encontraron propiedades para esta agencia.
                   </td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.metros}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.aLaVenta}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene1}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene2}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.deja}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene3}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.christian}</td>
-                  <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.zona}</td>
-                  <td className="p-3 text-sm text-gray-800"></td>
                 </tr>
-              ))}
+              ) : (
+                propertiesData.map((row, index) => (
+                  <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.id}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.precio}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.habitaciones}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                      {row.imagenes && (
+                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200">
+                          {row.imagenes}
+                        </span>
+                      )}
+                    </td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.metros}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.aLaVenta}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene1}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene2}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.deja}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.tiene3}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.christian}</td>
+                    <td className="border-r border-gray-200 p-3 text-sm text-gray-800">{row.zona}</td>
+                    <td className="p-3 text-sm text-gray-800"></td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
