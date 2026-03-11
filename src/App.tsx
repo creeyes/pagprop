@@ -32,7 +32,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   // Función para cargar propiedades desde la API de Django
   const fetchProperties = async (agencyId: string) => {
@@ -49,7 +51,6 @@ export default function App() {
       const data = await response.json();
       console.log("✅ Datos recibidos de la API:", data);
 
-      // La API usa paginación, los resultados vienen en "results"
       const properties = data.results || data;
       setPropertiesData(Array.isArray(properties) ? properties : []);
       setTotalCount(data.count || properties.length || 0);
@@ -61,27 +62,68 @@ export default function App() {
     }
   };
 
+  // Función para desencriptar el payload SSO via Django
+  const decryptSSO = async (encryptedPayload: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/front/api/decrypt-sso/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encryptedData: encryptedPayload }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Error HTTP ${response.status}`);
+    }
+
+    return response.json();
+  };
+
   useEffect(() => {
-    // PASO 1: Leer location_id de la URL
+    // PASO 1: Intentar leer location_id de la URL (para compatibilidad)
     const urlParams = new URLSearchParams(window.location.search);
     const locationFromUrl = urlParams.get('location_id') || urlParams.get('locationId');
 
     if (locationFromUrl) {
       console.log("✅ location_id recibido por URL:", locationFromUrl);
       setLocationId(locationFromUrl);
+      setDebugInfo('Método: URL params');
       fetchProperties(locationFromUrl).finally(() => setLoading(false));
       return;
     }
 
-    // PASO 2: Fallback → postMessage con GHL
+    // PASO 2: Usar postMessage SSO de GHL (método oficial del Marketplace)
     let isResolved = false;
 
-    const messageHandler = (event: MessageEvent) => {
-      if (event.data.message === 'REQUEST_USER_DATA_RESPONSE') {
-        console.log("✅ GHL respondió por postMessage:", event.data.payload);
+    const messageHandler = async (event: MessageEvent) => {
+      if (event.data.message === 'REQUEST_USER_DATA_RESPONSE' && !isResolved) {
         isResolved = true;
-        // TODO: extraer location_id del payload de GHL
-        setLoading(false);
+        const encryptedPayload = event.data.payload;
+        console.log("🔐 GHL respondió con payload encriptado");
+        setDebugInfo('Método: postMessage SSO');
+
+        try {
+          // Enviar payload encriptado a Django para desencriptarlo
+          const userData = await decryptSSO(encryptedPayload);
+          console.log("✅ SSO desencriptado:", userData);
+
+          const activeLocation = userData.activeLocation || userData.companyId;
+
+          if (!activeLocation) {
+            throw new Error('No se encontró activeLocation ni companyId en el SSO');
+          }
+
+          setLocationId(activeLocation);
+          setUserName(userData.userName || null);
+
+          // Cargar propiedades con el location_id obtenido
+          await fetchProperties(activeLocation);
+
+        } catch (err: any) {
+          console.error("❌ Error con SSO:", err);
+          setApiError(`Error SSO: ${err.message}`);
+        } finally {
+          setLoading(false);
+        }
       }
     };
 
@@ -90,10 +132,10 @@ export default function App() {
 
     const timer = setTimeout(() => {
       if (!isResolved) {
-        setError("No se recibió el location_id.");
+        setError("No se pudo obtener el contexto de usuario de GHL.");
         setLoading(false);
       }
-    }, 3000);
+    }, 5000); // 5 segundos de timeout
 
     return () => {
       window.removeEventListener('message', messageHandler);
@@ -106,7 +148,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-600 font-medium">Cargando propiedades...</p>
+        <p className="text-gray-600 font-medium">Conectando con Go High Level...</p>
       </div>
     );
   }
@@ -116,23 +158,24 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full text-center border-t-4 border-red-500">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Modo Diagnóstico</h2>
-          <p className="text-gray-600 mb-4">No se recibió el <code className="bg-gray-100 px-1 rounded">location_id</code>.</p>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No se pudo conectar</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
 
           <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono break-all mb-4 border border-gray-300">
             <span className="text-blue-600 font-bold">URL actual:</span><br />
             {window.location.href}
             <br /><br />
-            <span className="text-purple-600 font-bold">Parámetros detectados:</span><br />
-            {window.location.search === "" ? "❌ Ningún parámetro recibido" : window.location.search}
+            <span className="text-purple-600 font-bold">Parámetros:</span><br />
+            {window.location.search === "" ? "❌ Ningún parámetro" : window.location.search}
           </div>
 
           <div className="bg-yellow-50 p-4 rounded text-left text-sm border border-yellow-300">
-            <span className="text-yellow-700 font-bold">💡 Solución:</span><br />
-            <p className="text-yellow-800 mt-1">Configura la URL con tu location_id real:</p>
-            <code className="block bg-white mt-2 p-2 rounded border border-yellow-200 text-xs">
-              https://pagprop.vercel.app/?location_id=TU_LOCATION_ID
-            </code>
+            <span className="text-yellow-700 font-bold">💡 Posibles soluciones:</span>
+            <ul className="text-yellow-800 mt-2 list-disc pl-4 space-y-1">
+              <li>Verifica que la app esté instalada desde el Marketplace</li>
+              <li>Verifica que el <strong>Shared Secret</strong> esté configurado en Railway</li>
+              <li>Como alternativa, usa: <code className="bg-white px-1 rounded text-xs">?location_id=TU_ID</code></li>
+            </ul>
           </div>
         </div>
       </div>
@@ -177,6 +220,11 @@ export default function App() {
             <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
               {totalCount} Propiedades
             </span>
+            {userName && (
+              <span className="text-gray-400 text-sm">
+                👤 {userName}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 transition-colors text-sm">
