@@ -444,7 +444,7 @@ export default function App() {
             <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
               {activeFilterCount > 0 ? `${filteredData.length} / ${totalCount}` : totalCount} Propiedades
             </span>
-            )}
+            
           </div>
           <div className="flex items-center gap-3">
             <button 
