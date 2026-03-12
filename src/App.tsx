@@ -17,7 +17,7 @@ import { useMemo } from 'react';
 
 // URL base: en DEV usa el proxy de Vite, en producción la URL directa de Railway
 // Para producción, cambia esto de vuelta a: 'https://web-production-2573f.up.railway.app'
-const API_BASE_URL = '';
+const API_BASE_URL = 'https://web-production-2573f.up.railway.app';
 
 const columns = [
   { key: 'id', label: 'ID' },
@@ -275,7 +275,7 @@ export default function App() {
   // Función para cargar propiedades desde la API de Django
   const fetchProperties = async (agencyId: string) => {
     try {
-      const url = `${API_BASE_URL}/api/properties/?agency_id=${agencyId}`;
+      const url = `${API_BASE_URL}/front/api/properties/?agency_id=${agencyId}`;
       console.log("📡 Llamando a API:", url);
 
       const response = await fetch(url);
@@ -300,7 +300,7 @@ export default function App() {
 
   // Función para desencriptar el payload SSO via Django
   const decryptSSO = async (encryptedPayload: string): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/decrypt-sso/`, {
+    const response = await fetch(`${API_BASE_URL}/front/api/decrypt-sso/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ encryptedData: encryptedPayload }),
@@ -322,15 +322,9 @@ export default function App() {
     //    y DESCOMENTA el bloque "MODO PRODUCCIÓN (GHL)" de abajo.
     // ============================================================
 
-    // -------- MODO DEV (inicio) --------
-    const DEV_LOCATION_ID = 'Qqg3dS8LsYYc0QQGEfVZ'; // ← Cambia esto por tu location_id real si es diferente
-    console.log("🛠️ MODO DEV: Usando location_id fijo:", DEV_LOCATION_ID);
-    setLocationId(DEV_LOCATION_ID);
-    setDebugInfo('Método: DEV hardcoded');
-    fetchProperties(DEV_LOCATION_ID).finally(() => setLoading(false));
-    // -------- MODO DEV (fin) -----------
+ 
 
-    /*
+    
     // -------- MODO PRODUCCIÓN (GHL) (inicio) --------
     // PASO 1: Intentar leer location_id de la URL (para compatibilidad)
     const urlParams = new URLSearchParams(window.location.search);
@@ -395,7 +389,7 @@ export default function App() {
       clearTimeout(timer);
     };
     // -------- MODO PRODUCCIÓN (GHL) (fin) --------
-    */
+    
   }, []);
 
   // Pantalla de carga
