@@ -38,7 +38,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
