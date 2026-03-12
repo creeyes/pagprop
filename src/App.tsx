@@ -359,7 +359,7 @@ export default function App() {
           }
 
           setLocationId(activeLocation);
-          setUserName(userData.userName || null);
+          
 
           // Cargar propiedades con el location_id obtenido
           await fetchProperties(activeLocation);
