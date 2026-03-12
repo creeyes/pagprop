@@ -621,7 +621,7 @@ export default function App() {
             </div>
             <button 
               onClick={openFieldsPanel}
-              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
             >
               <Settings size={16} />
               Gestionar campos
