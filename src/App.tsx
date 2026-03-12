@@ -449,7 +449,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button 
               onClick={openAddPanel}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 transition-colors text-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 transition-colors text-sm cursor-pointer"
             >
               <Plus size={18} />
               Añadir Propiedad
