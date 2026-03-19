@@ -11,7 +11,8 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   LayoutGrid, Table, CheckSquare, Square, X, Minus,
   Info, Link2, CheckSquare2, Trash2, RotateCcw,
-  ArrowUp, ArrowDown, GripVertical, Lock
+  ArrowUp, ArrowDown, GripVertical, Lock,
+  FileText, Edit3, Save
 } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -33,6 +34,7 @@ const columns = [
 ];
 
 export default function App() {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const [propertiesData, setPropertiesData] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -46,9 +48,19 @@ export default function App() {
   const [expandedCards, setExpandedCards] = useState<Record<number, boolean>>({});
   const [editingProperty, setEditingProperty] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({});
+  const [isSaving, setIsSaving] = useState(false);
   const [infoOpen, setInfoOpen] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; index: number } | null>(null);
-  const [panelTab, setPanelTab] = useState<'info' | 'associations' | 'tasks'>('info');
+  const [panelTab, setPanelTab] = useState<'info' | 'associations' | 'notes'>('info');
+
+  // --- Notas ---
+  type Note = { id: string; title: string; content: string; createdAt: string; updatedAt: string };
+  const [propertyNotes, setPropertyNotes] = useState<Note[]>([]);
+  const [noteForm, setNoteForm] = useState({ title: '', content: '' });
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteForm, setEditNoteForm] = useState({ title: '', content: '' });
+  const [noteSearchQuery, setNoteSearchQuery] = useState('');
   const [contactsOpen, setContactsOpen] = useState(true);
   const [trabajadoresOpen, setTrabajadoresOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -69,7 +81,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('propertyFilters');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { }
     return defaultFilters;
   };
 
@@ -77,7 +89,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('propertySort');
       if (saved) return saved;
-    } catch {}
+    } catch { }
     return 'default';
   };
 
@@ -85,7 +97,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('propertyColumns');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { }
     return columns.map(c => c.key);
   };
 
@@ -93,7 +105,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('propertyColumnOrder');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { }
     return columns.map(c => c.key);
   };
 
@@ -102,7 +114,7 @@ export default function App() {
   const [sortOption, setSortOption] = useState<string>(loadSavedSort);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [visibleColumns, setVisibleColumns] = useState<string[]>(loadSavedColumns);
   const [columnOrder, setColumnOrder] = useState<string[]>(loadSavedColumnOrder);
   const [showFieldsPanel, setShowFieldsPanel] = useState(false);
@@ -110,6 +122,11 @@ export default function App() {
   const [tempColumnOrder, setTempColumnOrder] = useState<string[]>([]);
   const [fieldsSearchQuery, setFieldsSearchQuery] = useState('');
   const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  const [availableLocations, setAvailableLocations] = useState<any[]>([]);
 
   // Obtener zonas y tipos únicos de los datos
   const uniqueLocations = useMemo(() => {
@@ -127,13 +144,13 @@ export default function App() {
     let result = propertiesData.filter(row => {
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesQuery = 
+        const matchesQuery =
           (row.id && String(row.id).toLowerCase().includes(query)) ||
           (row.title && String(row.title).toLowerCase().includes(query)) ||
           (row.location && String(row.location).toLowerCase().includes(query)) ||
           (row.type && String(row.type).toLowerCase().includes(query)) ||
           (row.features && Array.isArray(row.features) && row.features.some((f: string) => f.toLowerCase().includes(query)));
-        
+
         if (!matchesQuery) return false;
       }
 
@@ -158,6 +175,28 @@ export default function App() {
 
     return result;
   }, [propertiesData, activeFilters, sortOption, searchQuery]);
+
+  // Resetear página cuando cambian filtros, búsqueda u orden
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilters, sortOption, searchQuery]);
+
+  // Hacer scroll hacia arriba cuando se cambia de página
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+  }, [currentPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
+
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredData.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredData, currentPage]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -229,6 +268,27 @@ export default function App() {
     setDraggedColumnIndex(index);
   };
 
+  // --- Notas: persistencia en localStorage ---
+  const loadNotes = (propertyId: string) => {
+    try {
+      const saved = localStorage.getItem(`propertyNotes_${propertyId}`);
+      if (saved) {
+        setPropertyNotes(JSON.parse(saved));
+      } else {
+        setPropertyNotes([]);
+      }
+    } catch {
+      setPropertyNotes([]);
+    }
+    setIsAddingNote(false);
+    setEditingNoteId(null);
+    setNoteSearchQuery('');
+  };
+
+  const saveNotes = (propertyId: string, notes: Note[]) => {
+    localStorage.setItem(`propertyNotes_${propertyId}`, JSON.stringify(notes));
+  };
+
   const openEditPanel = (row: any) => {
     setEditingProperty(row);
     setEditForm({
@@ -239,13 +299,20 @@ export default function App() {
       sqm: row.sqm || 0,
       location: row.location || '',
       type: row.type || '',
-      features: row.features ? row.features.join(', ') : '',
+      features: row.features ? (Array.isArray(row.features) ? row.features.join(', ') : row.features) : '',
       isFeatured: row.isFeatured || false,
       images: row.images ? [...row.images] : [],
+      estado: row.estado || 'Activo',
+      animales: row.animales || 'No',
+      balcon: row.balcon || 'No',
+      garaje: row.garaje || 'No',
+      patioInterior: row.patioInterior || 'No',
     });
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
+    // Cargar notas de esta propiedad
+    if (row.id) loadNotes(row.id);
   };
 
   const openAddPanel = () => {
@@ -261,15 +328,81 @@ export default function App() {
       features: '',
       isFeatured: false,
       images: [],
+      estado: 'Activo',
+      animales: 'No',
+      balcon: 'No',
+      garaje: 'No',
+      patioInterior: 'No',
     });
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
+    setPropertyNotes([]);
   };
 
   const closeEditPanel = () => {
     setEditingProperty(null);
     setEditForm({});
+  };
+
+  const handleSaveProperty = async () => {
+    setIsSaving(true);
+    try {
+      let formPriceStr = String(editForm.price).trim();
+      if (!formPriceStr.startsWith('€') && !formPriceStr.startsWith('$')) {
+        formPriceStr = '€' + formPriceStr;
+      }
+
+      const payload = {
+        agencia: locationId,
+        ghl_contact_id: '',
+        precio: formPriceStr,
+        habitaciones: editForm.beds,
+        estado: editForm.estado,
+        animales: editForm.animales,
+        metros: editForm.sqm,
+        balcon: editForm.balcon,
+        garaje: editForm.garaje,
+        patioInterior: editForm.patioInterior,
+        imagenesUrl: editForm.images || [],
+
+        // Enviamos también los campos estandar
+        title: editForm.title,
+        location: editForm.location,
+        type: editForm.type,
+        features: editForm.features ? editForm.features.split(',').map((f: string) => f.trim()) : [],
+        isFeatured: editForm.isFeatured
+      };
+
+      const esNuevo = editingProperty?.isNew;
+      let url = `${API_BASE_URL}/api/properties/`;
+      let method = 'POST';
+
+      if (!esNuevo && editForm.id) {
+        url = `${API_BASE_URL}/api/properties/${editForm.id}/`;
+        method = 'PUT';
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      closeEditPanel();
+      if (locationId) {
+        await fetchProperties(locationId);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("No se pudo guardar la propiedad: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Función para cargar propiedades desde la API de Django
@@ -295,6 +428,20 @@ export default function App() {
       console.error("❌ Error al llamar a la API:", err);
       setApiError(err.message);
       setPropertiesData([]);
+    }
+  };
+
+  // Función para cargar zonas disponibles de la agencia
+  const fetchLocations = async (agencyId: string) => {
+    try {
+      const url = `${API_BASE_URL}/api/locations/?agency_id=${agencyId}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableLocations(data.locations || []);
+      }
+    } catch (err) {
+      console.error("❌ Error al cargar zonas:", err);
     }
   };
 
@@ -327,6 +474,7 @@ export default function App() {
     console.log("🛠️ MODO DEV: Usando location_id fijo:", DEV_LOCATION_ID);
     setLocationId(DEV_LOCATION_ID);
     setDebugInfo('Método: DEV hardcoded');
+    fetchLocations(DEV_LOCATION_ID);
     fetchProperties(DEV_LOCATION_ID).finally(() => setLoading(false));
     // -------- MODO DEV (fin) -----------
 
@@ -340,6 +488,7 @@ export default function App() {
       console.log("✅ location_id recibido por URL:", locationFromUrl);
       setLocationId(locationFromUrl);
       setDebugInfo('Método: URL params');
+      fetchLocations(locationFromUrl);
       fetchProperties(locationFromUrl).finally(() => setLoading(false));
       return;
     }
@@ -369,6 +518,7 @@ export default function App() {
           setUserName(userData.userName || null);
 
           // Cargar propiedades con el location_id obtenido
+          await fetchLocations(activeLocation);
           await fetchProperties(activeLocation);
 
         } catch (err: any) {
@@ -439,11 +589,11 @@ export default function App() {
 
   // Dashboard principal
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+    <div className="h-screen overflow-hidden bg-white font-sans text-gray-900 flex flex-col">
 
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header Section */}
         <div className="flex justify-between items-center px-6 py-5">
           <div className="flex items-center gap-4">
@@ -458,9 +608,9 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={openAddPanel}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 transition-colors text-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 transition-colors text-sm cursor-pointer"
             >
               <Plus size={18} />
               Añadir Propiedad
@@ -475,22 +625,20 @@ export default function App() {
         <div className="px-6 border-b border-gray-200 flex gap-6">
           <button
             onClick={() => setViewMode('table')}
-            className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors ${
-              viewMode === 'table'
+            className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors cursor-pointer ${viewMode === 'table'
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <Table size={18} />
             Tabla
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors ${
-              viewMode === 'list'
+            className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors cursor-pointer ${viewMode === 'list'
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <LayoutGrid size={18} />
             Lista
@@ -502,11 +650,10 @@ export default function App() {
           <div className="flex gap-3">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${
-                activeFilterCount > 0
+              className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${activeFilterCount > 0
                   ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <Filter size={16} />
               Filtros avanzados{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
@@ -514,11 +661,10 @@ export default function App() {
             <div className="relative">
               <button
                 onClick={() => setShowSortMenu(!showSortMenu)}
-                className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${
-                  sortOption !== 'default'
+                className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${sortOption !== 'default'
                     ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
                     : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 <ArrowUpDown size={16} />
                 Ordenar {sortOption !== 'default' && '(1)'}
@@ -531,7 +677,7 @@ export default function App() {
                     <div className="px-4 py-2 border-b border-gray-100 font-medium text-sm text-gray-900">
                       Ordenar propiedades por
                     </div>
-                    
+
                     <button
                       onClick={() => applySort('default')}
                       className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors cursor-pointer ${sortOption === 'default' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
@@ -602,7 +748,7 @@ export default function App() {
                     setExpandedCards(all);
                   }
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 {filteredData.length > 0 && filteredData.every((_, i) => expandedCards[i])
                   ? <CheckSquare size={16} />
@@ -622,7 +768,7 @@ export default function App() {
                 className="pl-9 pr-8 py-1.5 bg-transparent text-sm focus:outline-none w-64"
               />
               {searchQuery && (
-                <button 
+                <button
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -630,9 +776,9 @@ export default function App() {
                 </button>
               )}
             </div>
-            <button 
+            <button
               onClick={openFieldsPanel}
-              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
             >
               <Settings size={16} />
               Gestionar campos
@@ -675,11 +821,10 @@ export default function App() {
                     <button
                       key={n}
                       onClick={() => setFilters({ ...filters, beds: filters.beds === n ? null : n })}
-                      className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                        filters.beds === n
+                      className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors cursor-pointer ${filters.beds === n
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                        }`}
                     >
                       {n === 5 ? '5+' : n}
                     </button>
@@ -737,11 +882,10 @@ export default function App() {
                           : [...filters.types, type];
                         setFilters({ ...filters, types });
                       }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                        filters.types.includes(type)
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.types.includes(type)
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                        }`}
                     >
                       {type}
                     </button>
@@ -758,22 +902,20 @@ export default function App() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === true ? null : true })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                      filters.isFeatured === true
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === true
                         ? 'bg-yellow-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                      }`}
                   >
                     <Star size={12} />
                     Sí
                   </button>
                   <button
                     onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === false ? null : false })}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                      filters.isFeatured === false
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === false
                         ? 'bg-gray-700 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                      }`}
                   >
                     No
                   </button>
@@ -821,133 +963,128 @@ export default function App() {
 
         {/* Data Table */}
         {viewMode === 'table' && (
-        <div className="flex-1 overflow-x-auto px-6 pb-6">
-          <table className="w-full border-collapse min-w-max border border-gray-200">
-            <thead>
-              <tr className="border-b border-gray-200">
-                {columnOrder.filter(key => visibleColumns.includes(key)).map(key => {
-                  const col = columns.find(c => c.key === key);
-                  if (!col) return null;
-                  return (
-                    <th key={col.key} className="border-r border-gray-200 last:border-r-0 p-3 text-left text-sm font-semibold text-gray-700 bg-white whitespace-nowrap">
-                      <div className="flex items-center justify-between gap-4">
-                        {col.label}
-                        <ChevronsUpDown size={14} className="text-gray-400 cursor-pointer hover:text-gray-600" />
-                      </div>
-                    </th>
-                  );
-                })}
-                <th className="p-3 bg-white w-full"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length + 1} className="text-center py-8 text-gray-500">
-                    No se encontraron propiedades para esta agencia.
-                  </td>
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto px-6 pb-6">
+            <table className="w-full border-collapse min-w-max border border-gray-200">
+              <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_0_#e5e7eb,0_2px_4px_0_rgba(0,0,0,0.05)]">
+                <tr className="border-b border-gray-200">
+                  {columnOrder.filter(key => key !== 'id' && visibleColumns.includes(key)).map(key => {
+                    const col = columns.find(c => c.key === key);
+                    if (!col) return null;
+                    return (
+                      <th key={col.key} className="border-r border-gray-200 last:border-r-0 p-3 text-left text-sm font-semibold text-gray-700 bg-white whitespace-nowrap">
+                        <div className="flex items-center justify-between gap-4">
+                          {col.label}
+                          <ChevronsUpDown size={14} className="text-gray-400 cursor-pointer hover:text-gray-600" />
+                        </div>
+                      </th>
+                    );
+                  })}
+                  <th className="p-3 bg-white w-full"></th>
                 </tr>
-              ) : (
-                filteredData.map((row, index) => (
-                  <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openEditPanel(row)}>
-                    {columnOrder.filter(key => visibleColumns.includes(key)).map(key => {
-                      if (key === 'id') return (
-                        <td key="id" className="border-r border-gray-200 p-3 text-sm text-gray-800 font-mono">
-                          {row.id ? row.id.substring(0, 8) + '...' : '-'}
-                        </td>
-                      );
-                      if (key === 'title') return (
-                        <td key="title" className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs truncate">
-                          {row.title || '-'}
-                        </td>
-                      );
-                      if (key === 'price') return (
-                        <td key="price" className="border-r border-gray-200 p-3 text-sm text-gray-800 font-medium">
-                          {row.price ? `${Number(row.price).toLocaleString('es-ES')} €` : '-'}
-                        </td>
-                      );
-                      if (key === 'beds') return (
-                        <td key="beds" className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
-                          {row.beds ?? '-'}
-                        </td>
-                      );
-                      if (key === 'sqm') return (
-                        <td key="sqm" className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                          {row.sqm ? `${row.sqm} m²` : '-'}
-                        </td>
-                      );
-                      if (key === 'location') return (
-                        <td key="location" className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                          <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
-                            {row.location || 'Sin zona'}
-                          </span>
-                        </td>
-                      );
-                      if (key === 'type') return (
-                        <td key="type" className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.type === 'Villa' ? 'bg-purple-50 text-purple-700' :
+              </thead>
+              <tbody>
+                {paginatedData.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="text-center py-8 text-gray-500">
+                      No se encontraron propiedades para esta agencia.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedData.map((row, index) => (
+                    <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openEditPanel(row)}>
+                      {columnOrder.filter(key => key !== 'id' && visibleColumns.includes(key)).map(key => {
+                        if (key === 'title') return (
+                          <td key="title" className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs truncate">
+                            {row.title || '-'}
+                          </td>
+                        );
+                        if (key === 'price') return (
+                          <td key="price" className="border-r border-gray-200 p-3 text-sm text-gray-800 font-medium">
+                            {row.price ? `${Number(row.price).toLocaleString('es-ES')} €` : '-'}
+                          </td>
+                        );
+                        if (key === 'beds') return (
+                          <td key="beds" className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
+                            {row.beds ?? '-'}
+                          </td>
+                        );
+                        if (key === 'sqm') return (
+                          <td key="sqm" className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                            {row.sqm ? `${row.sqm} m²` : '-'}
+                          </td>
+                        );
+                        if (key === 'location') return (
+                          <td key="location" className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
+                              {row.location || 'Sin zona'}
+                            </span>
+                          </td>
+                        );
+                        if (key === 'type') return (
+                          <td key="type" className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.type === 'Villa' ? 'bg-purple-50 text-purple-700' :
                               row.type === 'Studio' ? 'bg-orange-50 text-orange-700' :
                                 'bg-green-50 text-green-700'
-                            }`}>
-                            {row.type || '-'}
-                          </span>
-                        </td>
-                      );
-                      if (key === 'features') return (
-                        <td key="features" className="border-r border-gray-200 p-3 text-sm text-gray-800">
-                          <div className="flex flex-wrap gap-1">
-                            {row.features && row.features.length > 0 ? (
-                              row.features.map((f: string, i: number) => (
-                                <span key={i} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs">
-                                  {f}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-gray-400 text-xs">—</span>
-                            )}
-                          </div>
-                        </td>
-                      );
-                      if (key === 'images') return (
-                        <td key="images" className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
-                          {row.images && row.images.length > 0 ? (
-                            <div className="flex items-center gap-1">
-                              <ImageIcon size={14} className="text-green-500" />
-                              <span className="text-xs">{row.images.length}</span>
+                              }`}>
+                              {row.type || '-'}
+                            </span>
+                          </td>
+                        );
+                        if (key === 'features') return (
+                          <td key="features" className="border-r border-gray-200 p-3 text-sm text-gray-800">
+                            <div className="flex flex-wrap gap-1">
+                              {row.features && row.features.length > 0 ? (
+                                row.features.map((f: string, i: number) => (
+                                  <span key={i} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs">
+                                    {f}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-xs">—</span>
+                              )}
                             </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs">0</span>
-                          )}
-                        </td>
-                      );
-                      if (key === 'isFeatured') return (
-                        <td key="isFeatured" className="border-r border-gray-200 p-3 text-sm text-center">
-                          {row.isFeatured ? (
-                            <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                      );
-                      return null;
-                    })}
-                    <td className="p-3 text-sm text-gray-800"></td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                          </td>
+                        );
+                        if (key === 'images') return (
+                          <td key="images" className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
+                            {row.images && row.images.length > 0 ? (
+                              <div className="flex items-center gap-1">
+                                <ImageIcon size={14} className="text-green-500" />
+                                <span className="text-xs">{row.images.length}</span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">0</span>
+                            )}
+                          </td>
+                        );
+                        if (key === 'isFeatured') return (
+                          <td key="isFeatured" className="border-r border-gray-200 p-3 text-sm text-center">
+                            {row.isFeatured ? (
+                              <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        );
+                        return null;
+                      })}
+                      <td className="p-3 text-sm text-gray-800"></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {/* Card List View */}
         {viewMode === 'list' && (
-          <div className="flex-1 px-6 pb-6">
-            {filteredData.length === 0 ? (
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 pb-6">
+            {paginatedData.length === 0 ? (
               <p className="text-center py-8 text-gray-500">No se encontraron propiedades para esta agencia.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-start">
-                {filteredData.map((row, index) => {
+                {paginatedData.map((row, index) => {
                   const images = row.images || [];
                   const currentImg = cardImageIndex[index] || 0;
                   return (
@@ -1046,6 +1183,56 @@ export default function App() {
             )}
           </div>
         )}
+        {/* Paginación */}
+        {filteredData.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white">
+            <span className="text-sm text-gray-600">
+              Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)} de {filteredData.length} propiedades
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                <ChevronLeft size={16} />
+                Anterior
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                .reduce<(number | string)[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('...');
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === '...' ? (
+                    <span key={`dots-${idx}`} className="px-2 text-gray-400 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item as number)}
+                      className={`w-8 h-8 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                        currentPage === item
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Siguiente
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Panel lateral de edición */}
@@ -1057,408 +1244,615 @@ export default function App() {
           <div className="fixed top-0 right-0 h-full z-50 flex">
             {/* Contenido principal del panel */}
             <div className="w-full max-w-md bg-white shadow-2xl flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h2 className="text-base font-semibold text-gray-900">
-                {editingProperty?.isNew ? 'Añadir Nueva Propiedad' : `Editar Los Detalles De ${editForm.id ? editForm.id.substring(0, 8) : ''}`}
-              </h2>
-              <div className="flex items-center gap-2">
-                {/* Menu de opciones extra */}
-                {!editingProperty?.isNew && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setMenuOpen(!menuOpen)}
-                      className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors cursor-pointer"
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-                    {menuOpen && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)}></div>
-                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
-                          <button
-                            onClick={() => {
-                              setMenuOpen(false);
-                              // Aquí iría la lógica de eliminar
-                              if (confirm('¿Estás seguro de que quieres eliminar esta propiedad?')) {
-                                closeEditPanel();
-                              }
-                            }}
-                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={16} />
-                            Eliminar propiedad
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                <button onClick={closeEditPanel} className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            {/* Contenido scrollable */}
-            <div className="flex-1 overflow-y-auto">
-              {/* ID grande o Título para nueva propiedad */}
-              <div className="px-5 pt-5 pb-3">
-                <h3 className="text-2xl font-bold text-gray-900">
-                  {editingProperty?.isNew ? 'Nueva Propiedad' : (editForm.id ? editForm.id.substring(0, 8) : '')}
-                </h3>
-              </div>
-
-              {/* ====== TAB INFO ====== */}
-              {panelTab === 'info' && (
-              <>
-              {/* Todos los campos tab */}
-              <div className="px-5 border-b border-gray-200">
-                <span className="inline-block pb-2 border-b-2 border-blue-600 text-blue-600 text-sm font-medium">Todos los campos</span>
-              </div>
-
-              {/* Propiedad Info sección collapsible */}
-              <div className="px-5 pt-4">
-                <button
-                  onClick={() => setInfoOpen(!infoOpen)}
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-900 w-full"
-                >
-                  {infoOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  Propiedad Info
-                </button>
-
-                {infoOpen && (
-                  <div className="mt-4 space-y-4">
-                    {/* Id */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Id <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        value={editForm.id}
-                        readOnly
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500"
-                      />
-                    </div>
-
-                    {/* Título */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
-                      <input
-                        type="text"
-                        value={editForm.title}
-                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Precio propiedad */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio propiedad</label>
-                      <div className="flex items-center border border-gray-300 rounded-md">
-                        <span className="px-3 text-sm text-gray-500">€</span>
-                        <input
-                          type="number"
-                          value={editForm.price}
-                          onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
-                          className="flex-1 px-2 py-2 text-sm focus:outline-none"
-                        />
-                        <button
-                          onClick={() => setEditForm({ ...editForm, price: Math.max(0, editForm.price - 1) })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <button
-                          onClick={() => setEditForm({ ...editForm, price: editForm.price + 1 })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Habitaciones */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Habitaciones Propiedad</label>
-                      <div className="flex items-center border border-gray-300 rounded-md">
-                        <input
-                          type="number"
-                          value={editForm.beds}
-                          onChange={(e) => setEditForm({ ...editForm, beds: Number(e.target.value) })}
-                          className="flex-1 px-3 py-2 text-sm focus:outline-none"
-                        />
-                        <button
-                          onClick={() => setEditForm({ ...editForm, beds: Math.max(0, editForm.beds - 1) })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <button
-                          onClick={() => setEditForm({ ...editForm, beds: editForm.beds + 1 })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Metros² */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Metros²</label>
-                      <div className="flex items-center border border-gray-300 rounded-md">
-                        <input
-                          type="number"
-                          value={editForm.sqm}
-                          onChange={(e) => setEditForm({ ...editForm, sqm: Number(e.target.value) })}
-                          className="flex-1 px-3 py-2 text-sm focus:outline-none"
-                        />
-                        <button
-                          onClick={() => setEditForm({ ...editForm, sqm: Math.max(0, editForm.sqm - 1) })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <button
-                          onClick={() => setEditForm({ ...editForm, sqm: editForm.sqm + 1 })}
-                          className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Zona */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Zona</label>
-                      <input
-                        type="text"
-                        value={editForm.location}
-                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Tipo */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                      <input
-                        type="text"
-                        value={editForm.type}
-                        onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Características */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Características</label>
-                      <input
-                        type="text"
-                        value={editForm.features}
-                        onChange={(e) => setEditForm({ ...editForm, features: e.target.value })}
-                        placeholder="Separadas por coma"
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Destacada */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={editForm.isFeatured}
-                        onChange={(e) => setEditForm({ ...editForm, isFeatured: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <label className="text-sm font-medium text-gray-700">Destacada</label>
-                    </div>
-
-                    {/* Imágenes de la propiedad */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Imágenes de la propiedad</label>
-                      {editForm.images && editForm.images.length > 0 ? (
-                        <div className="grid grid-cols-3 gap-2">
-                          {editForm.images.map((img: string, i: number) => (
-                            <div key={i} className="relative group">
-                              <img
-                                src={img}
-                                alt={`Imagen ${i + 1}`}
-                                className="w-full h-20 object-cover rounded border border-gray-200 cursor-pointer"
-                                onClick={() => setLightboxImage({ src: img, index: i })}
-                              />
-                              <button
-                                onClick={() => {
-                                  const newImages = editForm.images.filter((_: string, idx: number) => idx !== i);
-                                  setEditForm({ ...editForm, images: newImages });
-                                }}
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="w-full h-24 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400">
-                          <ImageIcon size={32} />
-                        </div>
-                      )}
-                      {/* Botón añadir imagen */}
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <h2 className="text-base font-semibold text-gray-900">
+                  {editingProperty?.isNew ? 'Añadir Nueva Propiedad' : `Editar Los Detalles De ${editForm.id ? editForm.id.substring(0, 8) : ''}`}
+                </h2>
+                <div className="flex items-center gap-2">
+                  {/* Menu de opciones extra */}
+                  {!editingProperty?.isNew && (
+                    <div className="relative">
                       <button
-                        onClick={() => {
-                          const url = prompt('Introduce la URL de la imagen:');
-                          if (url && url.trim()) {
-                            setEditForm({ ...editForm, images: [...(editForm.images || []), url.trim()] });
-                          }
-                        }}
-                        className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                        onClick={() => setMenuOpen(!menuOpen)}
+                        className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors cursor-pointer"
                       >
-                        <Plus size={16} />
-                        Añadir imagen
+                        <MoreVertical size={18} />
                       </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              </>
-              )}
-
-              {/* ====== TAB ASOCIACIONES ====== */}
-              {panelTab === 'associations' && (
-              <div className="px-5 pt-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Objetos relacionados</h3>
-
-                {/* Contacts */}
-                <div className="border-t border-gray-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setContactsOpen(!contactsOpen)}
-                      className="flex items-center gap-2 text-sm font-semibold text-gray-900"
-                    >
-                      {contactsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      Contacts (0)
-                    </button>
-                    <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                      <Plus size={14} />
-                      Añadir
-                    </button>
-                  </div>
-                  {contactsOpen && (
-                    <div className="flex flex-col items-center py-8">
-                      <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                          <circle cx="24" cy="20" r="8" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
-                          <path d="M8 42c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
-                        </svg>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-3">No Contact asociado</p>
-                      <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                        <Plus size={14} />
-                        Asociar nuevo Contact
-                      </button>
+                      {menuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)}></div>
+                          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
+                            <button
+                              onClick={() => {
+                                setMenuOpen(false);
+                                // Aquí iría la lógica de eliminar
+                                if (confirm('¿Estás seguro de que quieres eliminar esta propiedad?')) {
+                                  closeEditPanel();
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={16} />
+                              Eliminar propiedad
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
-                </div>
-
-                {/* Trabajadores */}
-                <div className="border-t border-gray-200 pt-3 mt-2">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setTrabajadoresOpen(!trabajadoresOpen)}
-                      className="flex items-center gap-2 text-sm font-semibold text-gray-900"
-                    >
-                      {trabajadoresOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      Trabajadores (0)
-                    </button>
-                    <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                      <Plus size={14} />
-                      Añadir
-                    </button>
-                  </div>
-                  {trabajadoresOpen && (
-                    <div className="flex flex-col items-center py-8">
-                      <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                          <circle cx="24" cy="20" r="8" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
-                          <path d="M8 42c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
-                        </svg>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-3">No Trabajador asociado</p>
-                      <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-blue-600 hover:bg-blue-50 transition-colors">
-                        <Plus size={14} />
-                        Asociar nuevo Trabajador
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              )}
-
-              {/* ====== TAB TAREAS ====== */}
-              {panelTab === 'tasks' && (
-              <div className="px-5 pt-4 flex flex-col h-full">
-                {/* Header tareas */}
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Tareas</h3>
-                  <div className="flex items-center gap-2">
-                    <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                      <Filter size={18} />
-                    </button>
-                    <button className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                      <ArrowUpDown size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Botón añadir tarea */}
-                <button className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-blue-300 bg-blue-50 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors mb-3">
-                  <Plus size={16} />
-                  Añadir tarea
-                </button>
-
-                {/* Buscador */}
-                <div className="relative mb-6">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar Vía Tarea Título"
-                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                {/* Estado vacío */}
-                <div className="flex-1 flex flex-col items-center justify-center py-12">
-                  <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-5">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-base font-semibold text-gray-900 mb-1">No se han encontrado tareas</p>
-                  <p className="text-sm text-gray-400 mb-5">No hay actividades disponibles</p>
-                  <button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-                    <Plus size={16} />
-                    Añadir Nueva Tarea
+                  <button onClick={closeEditPanel} className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors">
+                    <X size={18} />
                   </button>
                 </div>
               </div>
-              )}
 
-            </div>
+              {/* Contenido scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                {/* ID grande o Título para nueva propiedad */}
+                <div className="px-5 pt-5 pb-3">
+                  <h3 className="text-2xl font-bold text-gray-900">
+                    {editingProperty?.isNew ? 'Nueva Propiedad' : (editForm.id ? editForm.id.substring(0, 8) : '')}
+                  </h3>
+                </div>
 
-            {/* Footer con botones */}
-            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200">
-              <button
-                onClick={closeEditPanel}
-                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={closeEditPanel}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
-              >
-                {editingProperty?.isNew ? 'Añadir Propiedad' : 'Guardar Cambios'}
-              </button>
-            </div>
+                {/* ====== TAB INFO ====== */}
+                {panelTab === 'info' && (
+                  <>
+                    {/* Todos los campos tab */}
+                    <div className="px-5 border-b border-gray-200">
+                      <span className="inline-block pb-2 border-b-2 border-blue-600 text-blue-600 text-sm font-medium">Todos los campos</span>
+                    </div>
+
+                    {/* Propiedad Info sección collapsible */}
+                    <div className="px-5 pt-4">
+                      <button
+                        onClick={() => setInfoOpen(!infoOpen)}
+                        className="flex items-center gap-2 text-sm font-semibold text-gray-900 w-full"
+                      >
+                        {infoOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        Propiedad Info
+                      </button>
+
+                      {infoOpen && (
+                        <div className="mt-4 space-y-4">
+                          {/* Id */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Id <span className="text-red-500">*</span></label>
+                            <input
+                              type="text"
+                              value={editForm.id}
+                              readOnly
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500"
+                            />
+                          </div>
+
+                          {/* Título */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+                            <input
+                              type="text"
+                              value={editForm.title}
+                              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          {/* Precio propiedad */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Precio propiedad</label>
+                            <div className="flex items-center border border-gray-300 rounded-md">
+                              <span className="px-3 text-sm text-gray-500">€</span>
+                              <input
+                                type="number"
+                                value={editForm.price}
+                                onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
+                                className="flex-1 px-2 py-2 text-sm focus:outline-none"
+                              />
+                              <button
+                                onClick={() => setEditForm({ ...editForm, price: Math.max(0, editForm.price - 1) })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <button
+                                onClick={() => setEditForm({ ...editForm, price: editForm.price + 1 })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Habitaciones */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Habitaciones Propiedad</label>
+                            <div className="flex items-center border border-gray-300 rounded-md">
+                              <input
+                                type="number"
+                                value={editForm.beds}
+                                onChange={(e) => setEditForm({ ...editForm, beds: Number(e.target.value) })}
+                                className="flex-1 px-3 py-2 text-sm focus:outline-none"
+                              />
+                              <button
+                                onClick={() => setEditForm({ ...editForm, beds: Math.max(0, editForm.beds - 1) })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <button
+                                onClick={() => setEditForm({ ...editForm, beds: editForm.beds + 1 })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Metros² */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Metros²</label>
+                            <div className="flex items-center border border-gray-300 rounded-md">
+                              <input
+                                type="number"
+                                value={editForm.sqm}
+                                onChange={(e) => setEditForm({ ...editForm, sqm: Number(e.target.value) })}
+                                className="flex-1 px-3 py-2 text-sm focus:outline-none"
+                              />
+                              <button
+                                onClick={() => setEditForm({ ...editForm, sqm: Math.max(0, editForm.sqm - 1) })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <button
+                                onClick={() => setEditForm({ ...editForm, sqm: editForm.sqm + 1 })}
+                                className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Zona */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Zona</label>
+                            <select
+                              value={editForm.location}
+                              onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="">Selecciona una zona</option>
+                              {availableLocations.map((loc: any, idx: number) => (
+                                <option key={idx} value={loc.zona}>
+                                  {loc.zona} ({loc.municipio})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Características */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Características</label>
+                            <input
+                              type="text"
+                              value={editForm.features}
+                              onChange={(e) => setEditForm({ ...editForm, features: e.target.value })}
+                              placeholder="Separadas por coma"
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          {/* Estado */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                            <select
+                              value={editForm.estado}
+                              onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            >
+                              <option value="Activo">Activo</option>
+                              <option value="Vendido">Vendido</option>
+                              <option value="No Oficial">No Oficial</option>
+                              <option value="Alquilado">Alquilado</option>
+                              <option value="Inactivo">Inactivo</option>
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            {/* Animales */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Permite Animales</label>
+                              <select
+                                value={editForm.animales}
+                                onChange={(e) => setEditForm({ ...editForm, animales: e.target.value })}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="Si">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+
+                            {/* Balcón */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Balcón</label>
+                              <select
+                                value={editForm.balcon}
+                                onChange={(e) => setEditForm({ ...editForm, balcon: e.target.value })}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="Si">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+
+                            {/* Garaje */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Garaje</label>
+                              <select
+                                value={editForm.garaje}
+                                onChange={(e) => setEditForm({ ...editForm, garaje: e.target.value })}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="Si">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+
+                            {/* Patio Interior */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Patio Interior</label>
+                              <select
+                                value={editForm.patioInterior}
+                                onChange={(e) => setEditForm({ ...editForm, patioInterior: e.target.value })}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="Si">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Destacada */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={editForm.isFeatured}
+                              onChange={(e) => setEditForm({ ...editForm, isFeatured: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <label className="text-sm font-medium text-gray-700">Destacada</label>
+                          </div>
+
+                          {/* Imágenes de la propiedad */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Imágenes de la propiedad</label>
+                            {editForm.images && editForm.images.length > 0 ? (
+                              <div className="grid grid-cols-3 gap-2">
+                                {editForm.images.map((img: string, i: number) => (
+                                  <div key={i} className="relative group">
+                                    <img
+                                      src={img}
+                                      alt={`Imagen ${i + 1}`}
+                                      className="w-full h-20 object-cover rounded border border-gray-200 cursor-pointer"
+                                      onClick={() => setLightboxImage({ src: img, index: i })}
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const newImages = editForm.images.filter((_: string, idx: number) => idx !== i);
+                                        setEditForm({ ...editForm, images: newImages });
+                                      }}
+                                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="w-full h-24 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400">
+                                <ImageIcon size={32} />
+                              </div>
+                            )}
+                            {/* Botón añadir imagen */}
+                            <button
+                              onClick={() => {
+                                const url = prompt('Introduce la URL de la imagen:');
+                                if (url && url.trim()) {
+                                  setEditForm({ ...editForm, images: [...(editForm.images || []), url.trim()] });
+                                }
+                              }}
+                              className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                              <Plus size={16} />
+                              Añadir imagen
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* ====== TAB ASOCIACIONES ====== */}
+                {panelTab === 'associations' && (
+                  <div className="px-5 pt-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Objetos relacionados</h3>
+
+                    {/* Contacts */}
+                    <div className="border-t border-gray-200 pt-3">
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => setContactsOpen(!contactsOpen)}
+                          className="flex items-center gap-2 text-sm font-semibold text-gray-900"
+                        >
+                          {contactsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          Contacts (0)
+                        </button>
+                        <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                          <Plus size={14} />
+                          Añadir
+                        </button>
+                      </div>
+                      {contactsOpen && (
+                        <div className="flex flex-col items-center py-8">
+                          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                              <circle cx="24" cy="20" r="8" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
+                              <path d="M8 42c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500 mb-3">No Contact asociado</p>
+                          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                            <Plus size={14} />
+                            Asociar nuevo Contact
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Trabajadores */}
+                    <div className="border-t border-gray-200 pt-3 mt-2">
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => setTrabajadoresOpen(!trabajadoresOpen)}
+                          className="flex items-center gap-2 text-sm font-semibold text-gray-900"
+                        >
+                          {trabajadoresOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          Trabajadores (0)
+                        </button>
+                        <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                          <Plus size={14} />
+                          Añadir
+                        </button>
+                      </div>
+                      {trabajadoresOpen && (
+                        <div className="flex flex-col items-center py-8">
+                          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                              <circle cx="24" cy="20" r="8" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
+                              <path d="M8 42c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#d1d5db" strokeWidth="2" fill="#e5e7eb" />
+                            </svg>
+                          </div>
+                          <p className="text-sm text-gray-500 mb-3">No Trabajador asociado</p>
+                          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                            <Plus size={14} />
+                            Asociar nuevo Trabajador
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ====== TAB NOTAS ====== */}
+                {panelTab === 'notes' && (
+                  <div className="px-5 pt-4 flex flex-col h-full">
+                    {/* Header notas */}
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Notas</h3>
+                    </div>
+
+                    {/* Botón añadir nota */}
+                    {!isAddingNote ? (
+                      <button
+                        onClick={() => { setIsAddingNote(true); setNoteForm({ title: '', content: '' }); }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-blue-300 bg-blue-50 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors mb-3 cursor-pointer"
+                      >
+                        <Plus size={16} />
+                        Añadir nota
+                      </button>
+                    ) : (
+                      <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-4 mb-3 space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Título de la nota"
+                          value={noteForm.title}
+                          onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <textarea
+                          placeholder="Escribe tu nota aquí..."
+                          value={noteForm.content}
+                          onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setIsAddingNote(false)}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!noteForm.title.trim() && !noteForm.content.trim()) return;
+                              const now = new Date().toISOString();
+                              const newNote: Note = {
+                                id: Date.now().toString(),
+                                title: noteForm.title.trim() || 'Sin título',
+                                content: noteForm.content.trim(),
+                                createdAt: now,
+                                updatedAt: now,
+                              };
+                              const updated = [newNote, ...propertyNotes];
+                              setPropertyNotes(updated);
+                              saveNotes(editForm.id, updated);
+                              setNoteForm({ title: '', content: '' });
+                              setIsAddingNote(false);
+                            }}
+                            disabled={!noteForm.title.trim() && !noteForm.content.trim()}
+                            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Buscador */}
+                    {propertyNotes.length > 0 && (
+                      <div className="relative mb-4">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar notas..."
+                          value={noteSearchQuery}
+                          onChange={(e) => setNoteSearchQuery(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    )}
+
+                    {/* Lista de notas o estado vacío */}
+                    {propertyNotes.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center py-12">
+                        <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-5">
+                          <FileText size={28} className="text-blue-600" />
+                        </div>
+                        <p className="text-base font-semibold text-gray-900 mb-1">No hay notas</p>
+                        <p className="text-sm text-gray-400 mb-5">Añade una nota para esta propiedad</p>
+                        <button
+                          onClick={() => { setIsAddingNote(true); setNoteForm({ title: '', content: '' }); }}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Plus size={16} />
+                          Añadir Primera Nota
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 flex-1 overflow-y-auto pb-4">
+                        {propertyNotes
+                          .filter(n => {
+                            if (!noteSearchQuery) return true;
+                            const q = noteSearchQuery.toLowerCase();
+                            return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q);
+                          })
+                          .map(note => (
+                            <div key={note.id} className="border border-gray-200 rounded-lg bg-white p-4 hover:shadow-sm transition-shadow">
+                              {editingNoteId === note.id ? (
+                                /* Modo edición */
+                                <div className="space-y-3">
+                                  <input
+                                    type="text"
+                                    value={editNoteForm.title}
+                                    onChange={(e) => setEditNoteForm({ ...editNoteForm, title: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <textarea
+                                    value={editNoteForm.content}
+                                    onChange={(e) => setEditNoteForm({ ...editNoteForm, content: e.target.value })}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => setEditingNoteId(null)}
+                                      className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const updated = propertyNotes.map(n =>
+                                          n.id === note.id
+                                            ? { ...n, title: editNoteForm.title.trim() || 'Sin título', content: editNoteForm.content.trim(), updatedAt: new Date().toISOString() }
+                                            : n
+                                        );
+                                        setPropertyNotes(updated);
+                                        saveNotes(editForm.id, updated);
+                                        setEditingNoteId(null);
+                                      }}
+                                      className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
+                                    >
+                                      Guardar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Modo visualización */
+                                <>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-gray-900">{note.title}</h4>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        onClick={() => { setEditingNoteId(note.id); setEditNoteForm({ title: note.title, content: note.content }); }}
+                                        className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors cursor-pointer"
+                                        title="Editar"
+                                      >
+                                        <Edit3 size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm('¿Eliminar esta nota?')) {
+                                            const updated = propertyNotes.filter(n => n.id !== note.id);
+                                            setPropertyNotes(updated);
+                                            saveNotes(editForm.id, updated);
+                                          }
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {note.content && (
+                                    <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{note.content}</p>
+                                  )}
+                                  <p className="text-xs text-gray-400 mt-2">
+                                    {new Date(note.updatedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+
+              {/* Footer con botones */}
+              <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200">
+                <button
+                  onClick={closeEditPanel}
+                  disabled={isSaving}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveProperty}
+                  disabled={isSaving}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSaving && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                  {editingProperty?.isNew ? 'Añadir Propiedad' : 'Guardar Cambios'}
+                </button>
+              </div>
             </div>
 
             {/* Iconos laterales */}
@@ -1466,11 +1860,10 @@ export default function App() {
               <div className="relative group">
                 <button
                   onClick={() => setPanelTab('info')}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-                    panelTab === 'info'
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'info'
                       ? 'bg-blue-50 text-blue-600'
                       : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   <Info size={20} />
                 </button>
@@ -1484,11 +1877,10 @@ export default function App() {
                   <div className="relative group">
                     <button
                       onClick={() => setPanelTab('associations')}
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-                        panelTab === 'associations'
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'associations'
                           ? 'bg-blue-50 text-blue-600'
                           : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       <Link2 size={20} />
                     </button>
@@ -1501,17 +1893,16 @@ export default function App() {
               )}
               <div className="relative group">
                 <button
-                  onClick={() => setPanelTab('tasks')}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-                    panelTab === 'tasks'
+                  onClick={() => setPanelTab('notes')}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'notes'
                       ? 'bg-blue-50 text-blue-600'
                       : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
-                  <CheckSquare2 size={20} />
+                  <FileText size={20} />
                 </button>
                 <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-                  Tareas
+                  Notas
                   <div className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-gray-900"></div>
                 </div>
               </div>
@@ -1564,7 +1955,7 @@ export default function App() {
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-4 border-b border-gray-200">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1582,13 +1973,13 @@ export default function App() {
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Campos en la tabla</h3>
               <div className="space-y-1">
                 {tempColumnOrder.filter(key => {
+                  if (key === 'id') return false; // No mostrar ID en el panel
                   if (!fieldsSearchQuery) return true;
                   const col = columns.find(c => c.key === key);
                   return col && col.label.toLowerCase().includes(fieldsSearchQuery.toLowerCase());
                 }).map((key, index) => {
                   const col = columns.find(c => c.key === key);
                   if (!col) return null;
-                  const isId = key === 'id'; // Id no se puede ocultar según el diseño
                   return (
                     <div
                       key={key}
@@ -1604,17 +1995,13 @@ export default function App() {
                         <label className="flex items-center gap-3 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={isId ? true : tempVisibleColumns.includes(key)}
-                            disabled={isId}
+                            checked={tempVisibleColumns.includes(key)}
                             onChange={() => toggleTempColumn(key)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50"
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                           />
-                          <span className={`text-sm select-none ${isId ? 'text-gray-500' : 'text-gray-700'}`}>{col.label}</span>
+                          <span className="text-sm select-none text-gray-700">{col.label}</span>
                         </label>
                       </div>
-                      {isId && (
-                        <Lock size={14} className="text-gray-400" />
-                      )}
                     </div>
                   );
                 })}
