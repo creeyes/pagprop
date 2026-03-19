@@ -18,7 +18,7 @@ import { useMemo } from 'react';
 
 // URL base: en DEV usa el proxy de Vite, en producción la URL directa de Railway
 // Para producción, cambia esto de vuelta a: 'https://web-production-2573f.up.railway.app'
-const API_BASE_URL = 'https://web-production-2573f.up.railway.app';
+const API_BASE_URL = '';
 
 const columns = [
   { key: 'id', label: 'ID' },
@@ -407,7 +407,7 @@ export default function App() {
   // Función para cargar propiedades desde la API de Django
   const fetchProperties = async (agencyId: string) => {
     try {
-      const url = `${API_BASE_URL}/front/api/properties/?agency_id=${agencyId}`;
+      const url = `${API_BASE_URL}/api/properties/?agency_id=${agencyId}`;
       console.log("📡 Llamando a API:", url);
 
       const response = await fetch(url);
@@ -446,7 +446,7 @@ export default function App() {
 
   // Función para desencriptar el payload SSO via Django
   const decryptSSO = async (encryptedPayload: string): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/front/api/decrypt-sso/`, {
+    const response = await fetch(`${API_BASE_URL}/api/decrypt-sso/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ encryptedData: encryptedPayload }),
@@ -468,7 +468,6 @@ export default function App() {
     //    y DESCOMENTA el bloque "MODO PRODUCCIÓN (GHL)" de abajo.
     // ============================================================
 
-<<<<<<< HEAD
     // -------- MODO DEV (inicio) --------
     const DEV_LOCATION_ID = 'Qqg3dS8LsYYc0QQGEfVZ'; // ← Cambia esto por tu location_id real si es diferente
     console.log("🛠️ MODO DEV: Usando location_id fijo:", DEV_LOCATION_ID);
@@ -477,11 +476,9 @@ export default function App() {
     fetchLocations(DEV_LOCATION_ID);
     fetchProperties(DEV_LOCATION_ID).finally(() => setLoading(false));
     // -------- MODO DEV (fin) -----------
-=======
 
->>>>>>> f4b46357e2f57ad95b072227048c7b3d113fb19e
-
-
+    
+    /*
     // -------- MODO PRODUCCIÓN (GHL) (inicio) --------
     // PASO 1: Intentar leer location_id de la URL (para compatibilidad)
     const urlParams = new URLSearchParams(window.location.search);
@@ -518,7 +515,7 @@ export default function App() {
           }
 
           setLocationId(activeLocation);
-
+          
 
           // Cargar propiedades con el location_id obtenido
           await fetchLocations(activeLocation);
@@ -548,7 +545,8 @@ export default function App() {
       clearTimeout(timer);
     };
     // -------- MODO PRODUCCIÓN (GHL) (fin) --------
-
+    */
+    
   }, []);
 
   // Pantalla de carga
@@ -604,7 +602,7 @@ export default function App() {
             <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
               {activeFilterCount > 0 ? `${filteredData.length} / ${totalCount}` : totalCount} Propiedades
             </span>
-
+            
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -625,8 +623,8 @@ export default function App() {
           <button
             onClick={() => setViewMode('table')}
             className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors cursor-pointer ${viewMode === 'table'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             <Table size={18} />
@@ -635,8 +633,8 @@ export default function App() {
           <button
             onClick={() => setViewMode('list')}
             className={`flex items-center gap-2 pb-3 font-medium text-sm transition-colors cursor-pointer ${viewMode === 'list'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             <LayoutGrid size={18} />
@@ -650,8 +648,8 @@ export default function App() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${activeFilterCount > 0
-                ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
-                : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
             >
               <Filter size={16} />
@@ -661,8 +659,8 @@ export default function App() {
               <button
                 onClick={() => setShowSortMenu(!showSortMenu)}
                 className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-sm font-medium transition-colors cursor-pointer ${sortOption !== 'default'
-                  ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
               >
                 <ArrowUpDown size={16} />
@@ -821,8 +819,8 @@ export default function App() {
                       key={n}
                       onClick={() => setFilters({ ...filters, beds: filters.beds === n ? null : n })}
                       className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors cursor-pointer ${filters.beds === n
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                     >
                       {n === 5 ? '5+' : n}
@@ -882,8 +880,8 @@ export default function App() {
                         setFilters({ ...filters, types });
                       }}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.types.includes(type)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                     >
                       {type}
@@ -902,8 +900,8 @@ export default function App() {
                   <button
                     onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === true ? null : true })}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === true
-                      ? 'bg-yellow-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-yellow-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                   >
                     <Star size={12} />
@@ -912,8 +910,8 @@ export default function App() {
                   <button
                     onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === false ? null : false })}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === false
-                      ? 'bg-gray-700 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-gray-700 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                   >
                     No
@@ -1211,10 +1209,11 @@ export default function App() {
                     <button
                       key={item}
                       onClick={() => setCurrentPage(item as number)}
-                      className={`w-8 h-8 rounded-md text-sm font-medium transition-colors cursor-pointer ${currentPage === item
+                      className={`w-8 h-8 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                        currentPage === item
                           ? 'bg-blue-600 text-white'
                           : 'text-gray-700 hover:bg-gray-100'
-                        }`}
+                      }`}
                     >
                       {item}
                     </button>
@@ -1859,8 +1858,8 @@ export default function App() {
                 <button
                   onClick={() => setPanelTab('info')}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'info'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                     }`}
                 >
                   <Info size={20} />
@@ -1876,8 +1875,8 @@ export default function App() {
                     <button
                       onClick={() => setPanelTab('associations')}
                       className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'associations'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                         }`}
                     >
                       <Link2 size={20} />
@@ -1893,8 +1892,8 @@ export default function App() {
                 <button
                   onClick={() => setPanelTab('notes')}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${panelTab === 'notes'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                     }`}
                 >
                   <FileText size={20} />

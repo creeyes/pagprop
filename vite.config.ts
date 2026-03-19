@@ -17,6 +17,13 @@ export default defineConfig(({mode}) => {
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
+      proxy: {
+        '/api': {
+          target: 'https://web-production-2573f.up.railway.app',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/api/, '/front/api'),
+        },
+      },
     },
   };
 });
