@@ -16,9 +16,9 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 
-// URL base: en DEV usa el proxy de Vite, en producción la URL directa de Railway
-// Para producción, cambia esto de vuelta a: 'https://web-production-2573f.up.railway.app'
-const API_BASE_URL = '';
+// En local: vacío → usa el proxy de Vite (/api/* → Railway)
+// En Vercel: añade VITE_API_BASE_URL=https://web-production-2573f.up.railway.app/front
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const columns = [
   { key: 'id', label: 'ID' },
