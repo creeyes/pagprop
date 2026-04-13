@@ -30,7 +30,6 @@ const columns = [
   { key: 'type', label: 'Tipo' },
   { key: 'features', label: 'Características' },
   { key: 'images', label: 'Imágenes' },
-  { key: 'isFeatured', label: 'Destacada' },
 ];
 
 export default function App() {
@@ -48,6 +47,8 @@ export default function App() {
   const [editingProperty, setEditingProperty] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const originalEditFormRef = React.useRef<any>({});
   const [infoOpen, setInfoOpen] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; index: number } | null>(null);
   const [panelTab, setPanelTab] = useState<'info' | 'associations' | 'notes'>('info');
@@ -288,9 +289,35 @@ export default function App() {
     localStorage.setItem(`propertyNotes_${propertyId}`, JSON.stringify(notes));
   };
 
+  const toggleFeaturedStatus = async (property: any) => {
+    if (!property.id) return;
+
+    const newValue = !property.isFeatured;
+
+    // Actualización optimista local
+    setPropertiesData(prev =>
+      prev.map(p => p.id === property.id ? { ...p, isFeatured: newValue } : p)
+    );
+
+    try {
+      const url = `${API_BASE_URL}/api/properties/${property.id}/`;
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFeatured: newValue }),
+      });
+
+      if (!response.ok) {
+        console.warn(`No se pudo guardar en el servidor (${response.status}), pero el cambio se mantiene localmente.`);
+      }
+    } catch (err: any) {
+      console.warn("Error al guardar destacada en el servidor:", err.message);
+    }
+  };
+
   const openEditPanel = (row: any) => {
     setEditingProperty(row);
-    setEditForm({
+    const form = {
       id: row.id || '',
       title: row.title || '',
       price: row.price || 0,
@@ -306,7 +333,9 @@ export default function App() {
       balcon: row.balcon || 'No',
       garaje: row.garaje || 'No',
       patioInterior: row.patioInterior || 'No',
-    });
+    };
+    setEditForm(form);
+    originalEditFormRef.current = form;
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
@@ -316,7 +345,7 @@ export default function App() {
 
   const openAddPanel = () => {
     setEditingProperty({ isNew: true });
-    setEditForm({
+    const form = {
       id: '',
       title: '',
       price: 0,
@@ -332,14 +361,20 @@ export default function App() {
       balcon: 'No',
       garaje: 'No',
       patioInterior: 'No',
-    });
+    };
+    setEditForm(form);
+    originalEditFormRef.current = form;
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
     setPropertyNotes([]);
   };
 
-  const closeEditPanel = () => {
+  const closeEditPanel = (force = false) => {
+    if (!force) {
+      const isDirty = JSON.stringify(editForm) !== JSON.stringify(originalEditFormRef.current);
+      if (isDirty && !window.confirm('Tienes cambios sin guardar. ¿Seguro que quieres salir?')) return;
+    }
     setEditingProperty(null);
     setEditForm({});
   };
@@ -392,7 +427,9 @@ export default function App() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
-      closeEditPanel();
+      closeEditPanel(true);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
       if (locationId) {
         await fetchProperties(locationId);
       }
@@ -461,92 +498,64 @@ export default function App() {
   };
 
   useEffect(() => {
-    // ============================================================
-    // 🔧 MODO DESARROLLO: Se usa un location_id fijo para que la
-    //    app funcione fuera de GHL. Para volver a activar el
-    //    bloqueo de GHL, BORRA o COMENTA el bloque "MODO DEV"
-    //    y DESCOMENTA el bloque "MODO PRODUCCIÓN (GHL)" de abajo.
-    // ============================================================
+    const FALLBACK_LOCATION_ID = 'Qqg3dS8LsYYc0QQGEfVZ';
 
-    // -------- MODO DEV (inicio) --------
-    const DEV_LOCATION_ID = 'Qqg3dS8LsYYc0QQGEfVZ'; // ← Cambia esto por tu location_id real si es diferente
-    console.log("🛠️ MODO DEV: Usando location_id fijo:", DEV_LOCATION_ID);
-    setLocationId(DEV_LOCATION_ID);
-    setDebugInfo('Método: DEV hardcoded');
-    fetchLocations(DEV_LOCATION_ID);
-    fetchProperties(DEV_LOCATION_ID).finally(() => setLoading(false));
-    // -------- MODO DEV (fin) -----------
+    const loadWithId = (id: string) => {
+      setLocationId(id);
+      fetchLocations(id);
+      fetchProperties(id).finally(() => setLoading(false));
+    };
 
-    
-    /*
-    // -------- MODO PRODUCCIÓN (GHL) (inicio) --------
-    // PASO 1: Intentar leer location_id de la URL (para compatibilidad)
+    // PASO 1: location_id por URL (máxima prioridad)
     const urlParams = new URLSearchParams(window.location.search);
     const locationFromUrl = urlParams.get('location_id') || urlParams.get('locationId');
-
     if (locationFromUrl) {
-      console.log("✅ location_id recibido por URL:", locationFromUrl);
-      setLocationId(locationFromUrl);
-      setDebugInfo('Método: URL params');
-      fetchLocations(locationFromUrl);
-      fetchProperties(locationFromUrl).finally(() => setLoading(false));
+      console.log("✅ location_id por URL:", locationFromUrl);
+      loadWithId(locationFromUrl);
       return;
     }
 
-    // PASO 2: Usar postMessage SSO de GHL (método oficial del Marketplace)
-    let isResolved = false;
+    // PASO 2: Si estamos dentro de un iframe (GHL), intentar SSO
+    const isInIframe = window.self !== window.top;
+    if (isInIframe) {
+      let isResolved = false;
 
-    const messageHandler = async (event: MessageEvent) => {
-      if (event.data.message === 'REQUEST_USER_DATA_RESPONSE' && !isResolved) {
-        isResolved = true;
-        const encryptedPayload = event.data.payload;
-        console.log("🔐 GHL respondió con payload encriptado");
-        setDebugInfo('Método: postMessage SSO');
-
-        try {
-          // Enviar payload encriptado a Django para desencriptarlo
-          const userData = await decryptSSO(encryptedPayload);
-          console.log("✅ SSO desencriptado:", userData);
-
-          const activeLocation = userData.activeLocation || userData.companyId;
-
-          if (!activeLocation) {
-            throw new Error('No se encontró activeLocation ni companyId en el SSO');
+      const messageHandler = async (event: MessageEvent) => {
+        if (event.data.message === 'REQUEST_USER_DATA_RESPONSE' && !isResolved) {
+          isResolved = true;
+          try {
+            const userData = await decryptSSO(event.data.payload);
+            const activeLocation = userData.activeLocation || userData.companyId;
+            if (!activeLocation) throw new Error('No se encontró activeLocation en el SSO');
+            console.log("✅ SSO GHL OK:", activeLocation);
+            loadWithId(activeLocation);
+          } catch (err: any) {
+            console.warn("⚠️ SSO falló, usando fallback:", err.message);
+            loadWithId(FALLBACK_LOCATION_ID);
           }
-
-          setLocationId(activeLocation);
-          
-
-          // Cargar propiedades con el location_id obtenido
-          await fetchLocations(activeLocation);
-          await fetchProperties(activeLocation);
-
-        } catch (err: any) {
-          console.error("❌ Error con SSO:", err);
-          setApiError(`Error SSO: ${err.message}`);
-        } finally {
-          setLoading(false);
         }
-      }
-    };
+      };
 
-    window.addEventListener('message', messageHandler);
-    window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*');
+      window.addEventListener('message', messageHandler);
+      window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*');
 
-    const timer = setTimeout(() => {
-      if (!isResolved) {
-        setError("No se pudo obtener el contexto de usuario de GHL.");
-        setLoading(false);
-      }
-    }, 5000); // 5 segundos de timeout
+      const timer = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          console.warn("⚠️ SSO timeout, usando fallback");
+          loadWithId(FALLBACK_LOCATION_ID);
+        }
+      }, 4000);
 
-    return () => {
-      window.removeEventListener('message', messageHandler);
-      clearTimeout(timer);
-    };
-    // -------- MODO PRODUCCIÓN (GHL) (fin) --------
-    */
-    
+      return () => {
+        window.removeEventListener('message', messageHandler);
+        clearTimeout(timer);
+      };
+    }
+
+    // PASO 3: Navegador directo (fuera de GHL) → usar ID fijo
+    console.log("🌐 Navegador externo, usando location_id fijo:", FALLBACK_LOCATION_ID);
+    loadWithId(FALLBACK_LOCATION_ID);
   }, []);
 
   // Pantalla de carga
@@ -611,9 +620,6 @@ export default function App() {
             >
               <Plus size={18} />
               Añadir Propiedad
-            </button>
-            <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-md transition-colors">
-              <MoreVertical size={20} />
             </button>
           </div>
         </div>
@@ -991,8 +997,24 @@ export default function App() {
                     <tr key={index} className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openEditPanel(row)}>
                       {columnOrder.filter(key => key !== 'id' && visibleColumns.includes(key)).map(key => {
                         if (key === 'title') return (
-                          <td key="title" className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs truncate">
-                            {row.title || '-'}
+                          <td key="title" className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="truncate flex-1" title={row.title || '-'}>{row.title || '-'}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFeaturedStatus(row);
+                                }}
+                                className="focus:outline-none cursor-pointer hover:scale-110 transition-transform shrink-0 -mt-0.5"
+                                title={row.isFeatured ? "Quitar destacada" : "Marcar como destacada"}
+                              >
+                                {row.isFeatured ? (
+                                  <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
+                                ) : (
+                                  <Star size={16} className="text-gray-300 hover:text-yellow-400 inline" />
+                                )}
+                              </button>
+                            </div>
                           </td>
                         );
                         if (key === 'price') return (
@@ -1054,15 +1076,7 @@ export default function App() {
                             )}
                           </td>
                         );
-                        if (key === 'isFeatured') return (
-                          <td key="isFeatured" className="border-r border-gray-200 p-3 text-sm text-center">
-                            {row.isFeatured ? (
-                              <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
-                            ) : (
-                              <span className="text-gray-300">—</span>
-                            )}
-                          </td>
-                        );
+
                         return null;
                       })}
                       <td className="p-3 text-sm text-gray-800"></td>
@@ -1166,10 +1180,22 @@ export default function App() {
                                 ? row.features.join(', ')
                                 : '—'}
                             </div>
-                            <p className="text-gray-700">
+                            <div className="text-gray-700 flex items-center gap-2">
                               <span className="font-medium">Destacada:</span>{' '}
-                              {row.isFeatured ? '⭐ Sí' : 'No'}
-                            </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFeaturedStatus(row);
+                                }}
+                                className="flex items-center gap-1.5 focus:outline-none cursor-pointer hover:scale-105 transition-transform"
+                              >
+                                {row.isFeatured ? (
+                                  <><Star size={14} className="text-yellow-500 fill-yellow-500" /> Sí</>
+                                ) : (
+                                  <><Star size={14} className="text-gray-300 hover:text-yellow-400" /> No</>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2020,6 +2046,16 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast de guardado correcto */}
+      {saveSuccess && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 bg-gray-900 text-white text-sm font-medium px-4 py-3 rounded-lg shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-green-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+          Propiedad guardada correctamente
         </div>
       )}
     </div>
