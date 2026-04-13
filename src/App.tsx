@@ -16,8 +16,9 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 
-// En local: vacío → usa el proxy de Vite (/api/* → Railway)
-// En Vercel: añade VITE_API_BASE_URL=https://web-production-2573f.up.railway.app/front
+// En local: vacío → el proxy de Vite reescribe /api/* → https://railway.app/front/api/*
+// En Vercel: vacío también → vercel.json reescribe /api/* → https://railway.app/front/api/*
+// Solo necesario si el backend permite CORS directo (ej. testing fuera de proxy)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const columns = [
@@ -289,7 +290,7 @@ export default function App() {
     localStorage.setItem(`propertyNotes_${propertyId}`, JSON.stringify(notes));
   };
 
-  const toggleFeaturedStatus = async (property: any) => {
+  const toggleFeaturedStatus = (property: any) => {
     if (!property.id) return;
 
     const newValue = !property.isFeatured;
@@ -299,20 +300,8 @@ export default function App() {
       prev.map(p => p.id === property.id ? { ...p, isFeatured: newValue } : p)
     );
 
-    try {
-      const url = `${API_BASE_URL}/api/properties/${property.id}/`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isFeatured: newValue }),
-      });
-
-      if (!response.ok) {
-        console.warn(`No se pudo guardar en el servidor (${response.status}), pero el cambio se mantiene localmente.`);
-      }
-    } catch (err: any) {
-      console.warn("Error al guardar destacada en el servidor:", err.message);
-    }
+    // isFeatured es calculado en el servidor (precio > umbral), no se puede escribir.
+    // El cambio es solo local/visual hasta el próximo fetchProperties.
   };
 
   const openEditPanel = (row: any) => {
@@ -413,7 +402,8 @@ export default function App() {
       let method = 'POST';
 
       if (!esNuevo && editForm.id) {
-        url = `${API_BASE_URL}/api/properties/${editForm.id}/`;
+        // agency_id como query param para que el backend filtre por agencia correctamente
+        url = `${API_BASE_URL}/api/properties/${editForm.id}/?agency_id=${locationId}`;
         method = 'PUT';
       }
 
@@ -444,7 +434,9 @@ export default function App() {
   // Función para cargar propiedades desde la API de Django
   const fetchProperties = async (agencyId: string) => {
     try {
-      const url = `${API_BASE_URL}/api/properties/?agency_id=${agencyId}`;
+      // page_size=100 para traer hasta 100 propiedades en una sola petición
+      // (el backend pagina a 20 por defecto y permite hasta 100)
+      const url = `${API_BASE_URL}/api/properties/?agency_id=${agencyId}&page_size=100`;
       console.log("📡 Llamando a API:", url);
 
       const response = await fetch(url);
