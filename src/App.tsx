@@ -380,6 +380,7 @@ export default function App() {
 
       const payload = {
         agencia: locationId,
+        ghl_record_id: editForm.ghl_id || '',
         ghl_contact_id: '',
         precio: formPriceStr,
         habitaciones: editForm.beds,
@@ -399,15 +400,9 @@ export default function App() {
         isFeatured: editForm.isFeatured
       };
 
-      const esNuevo = editingProperty?.isNew;
-      let url = `${API_BASE_URL}/api/properties/`;
+      // Siempre usamos el endpoint de gestion para crear/actualizar
+      let url = `${API_BASE_URL}/back/api/propiedades/gestion/`;
       let method = 'POST';
-
-      if (!esNuevo && editForm.id) {
-        // agency_id como query param para que el backend filtre por agencia correctamente
-        url = `${API_BASE_URL}/api/properties/${editForm.id}/?agency_id=${locationId}`;
-        method = 'POST';
-      }
 
       const response = await fetch(url, {
         method,
