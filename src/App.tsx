@@ -19,7 +19,8 @@ import { useMemo } from 'react';
 // En local: vacío → el proxy de Vite reescribe /api/* → https://railway.app/front/api/*
 // En Vercel: vacío también → vercel.json reescribe /api/* → https://railway.app/front/api/*
 // Solo necesario si el backend permite CORS directo (ej. testing fuera de proxy)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = ''; 
 
 const columns = [
   { key: 'id', label: 'ID' },
@@ -441,7 +442,7 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      const url = `https://web-production-2573f.up.railway.app/back/api/webhooks/propiedad/delete/`;
+      const url = `${API_BASE_URL}/back/api/webhooks/propiedad/delete/`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
