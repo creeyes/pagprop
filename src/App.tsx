@@ -406,7 +406,7 @@ export default function App() {
       if (!esNuevo && editForm.id) {
         // agency_id como query param para que el backend filtre por agencia correctamente
         url = `${API_BASE_URL}/api/properties/${editForm.id}/?agency_id=${locationId}`;
-        method = 'PUT';
+        method = 'POST';
       }
 
       const response = await fetch(url, {
