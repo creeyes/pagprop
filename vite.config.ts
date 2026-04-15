@@ -23,7 +23,13 @@ export default defineConfig(({mode}) => {
           changeOrigin: true,
           rewrite: (p: string) => p.replace(/^\/api/, '/front/api'),
         },
+        '/back/api':{
+          target: 'https://web-production-2573f.up.railway.app',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace('/back/api', ''),
+        }
       },
+
     },
   };
 });
