@@ -308,6 +308,7 @@ export default function App() {
     setEditingProperty(row);
     const form = {
       id: row.id || '',
+      ghl_id: row.ghl_id || '',
       title: row.title || '',
       price: row.price || 0,
       beds: row.beds || 0,
@@ -426,6 +427,44 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       alert("No se pudo guardar la propiedad: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteProperty = async () => {
+    if (!editForm.id) return;
+
+    if (!window.confirm('¿Estás seguro de que quieres eliminar esta propiedad?')) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const url = `https://web-production-2573f.up.railway.app/back/api/webhooks/propiedad/delete/`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customData: {
+            id_django: editForm.id
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      setMenuOpen(false);
+      closeEditPanel(true);
+      if (locationId) {
+        await fetchProperties(locationId);
+      }
+      alert("Propiedad eliminada correctamente.");
+    } catch (err: any) {
+      console.error(err);
+      alert("No se pudo eliminar la propiedad: " + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -1262,7 +1301,7 @@ export default function App() {
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                 <h2 className="text-base font-semibold text-gray-900">
-                  {editingProperty?.isNew ? 'Añadir Nueva Propiedad' : `Editar Los Detalles De ${editForm.id ? editForm.id.substring(0, 8) : ''}`}
+                  {editingProperty?.isNew ? 'Añadir Nueva Propiedad' : `Editar Los Detalles De ${editForm.ghl_id ? String(editForm.ghl_id).substring(0, 8) : (editForm.id ? String(editForm.id) : '')}`}
                 </h2>
                 <div className="flex items-center gap-2">
                   {/* Menu de opciones extra */}
@@ -1279,13 +1318,7 @@ export default function App() {
                           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)}></div>
                           <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
                             <button
-                              onClick={() => {
-                                setMenuOpen(false);
-                                // Aquí iría la lógica de eliminar
-                                if (confirm('¿Estás seguro de que quieres eliminar esta propiedad?')) {
-                                  closeEditPanel();
-                                }
-                              }}
+                              onClick={handleDeleteProperty}
                               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                             >
                               <Trash2 size={16} />
@@ -1307,7 +1340,7 @@ export default function App() {
                 {/* ID grande o Título para nueva propiedad */}
                 <div className="px-5 pt-5 pb-3">
                   <h3 className="text-2xl font-bold text-gray-900">
-                    {editingProperty?.isNew ? 'Nueva Propiedad' : (editForm.id ? editForm.id.substring(0, 8) : '')}
+                    {editingProperty?.isNew ? 'Nueva Propiedad' : (editForm.ghl_id ? String(editForm.ghl_id).substring(0, 8) : (editForm.id ? String(editForm.id) : ''))}
                   </h3>
                 </div>
 
