@@ -12,9 +12,10 @@ import {
   LayoutGrid, Table, CheckSquare, Square, X, Minus,
   Info, Link2, CheckSquare2, Trash2, RotateCcw,
   ArrowUp, ArrowDown, GripVertical, Lock,
-  FileText, Edit3, Save
+  FileText, Edit3, Save, Upload
 } from 'lucide-react';
 import { useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 
 // En local: vacío → el proxy de Vite reescribe /api/* → https://railway.app/front/api/*
 // En Vercel: vacío también → vercel.json reescribe /api/* → https://railway.app/front/api/*
@@ -49,8 +50,11 @@ export default function App() {
   const [editingProperty, setEditingProperty] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
   const originalEditFormRef = React.useRef<any>({});
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [infoOpen, setInfoOpen] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; index: number } | null>(null);
   const [panelTab, setPanelTab] = useState<'info' | 'associations' | 'notes'>('info');
@@ -325,8 +329,9 @@ export default function App() {
       garaje: row.garaje || 'No',
       patioInterior: row.patioInterior || 'No',
     };
-    setEditForm(form);
+     setEditForm(form);
     originalEditFormRef.current = form;
+    setImagesToDelete([]);
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
@@ -353,8 +358,9 @@ export default function App() {
       garaje: 'No',
       patioInterior: 'No',
     };
-    setEditForm(form);
+     setEditForm(form);
     originalEditFormRef.current = form;
+    setImagesToDelete([]);
     setInfoOpen(true);
     setLightboxImage(null);
     setPanelTab('info');
@@ -366,8 +372,46 @@ export default function App() {
       const isDirty = JSON.stringify(editForm) !== JSON.stringify(originalEditFormRef.current);
       if (isDirty && !window.confirm('Tienes cambios sin guardar. ¿Seguro que quieres salir?')) return;
     }
-    setEditingProperty(null);
+     setEditingProperty(null);
     setEditForm({});
+    setImagesToDelete([]);
+  };
+
+  const handleFileUpload = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (result) {
+          setEditForm((prev: any) => ({
+            ...prev,
+            images: [...(prev.images || []), { isNew: true, file: file, preview: result }]
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files);
+    }
   };
 
   const handleSaveProperty = async () => {
@@ -378,36 +422,43 @@ export default function App() {
         formPriceStr = '€' + formPriceStr;
       }
 
-      const payload = {
-        agencia: locationId,
-        ghl_record_id: editForm.ghl_id || '',
-        ghl_contact_id: '',
-        precio: formPriceStr,
-        habitaciones: editForm.beds,
-        estado: editForm.estado,
-        animales: editForm.animales,
-        metros: editForm.sqm,
-        balcon: editForm.balcon,
-        garaje: editForm.garaje,
-        patioInterior: editForm.patioInterior,
-        imagenesUrl: editForm.images || [],
+      const formData = new FormData();
+      formData.append('agencia', locationId || '');
+      formData.append('ghl_record_id', editForm.ghl_id || '');
+      formData.append('precio', formPriceStr);
+      formData.append('habitaciones', String(editForm.beds));
+      formData.append('estado', editForm.estado);
+      formData.append('animales', editForm.animales);
+      formData.append('metros', String(editForm.sqm));
+      formData.append('balcon', editForm.balcon);
+      formData.append('garaje', editForm.garaje);
+      formData.append('patioInterior', editForm.patioInterior);
+      formData.append('title', editForm.title || '');
+      formData.append('location', editForm.location || '');
+      formData.append('type', editForm.type || '');
+      formData.append('isFeatured', String(editForm.isFeatured));
+      
+      const featuresArr = editForm.features ? editForm.features.split(',').map((f: string) => f.trim()) : [];
+      featuresArr.forEach((f: string) => formData.append('features', f));
 
-        // Enviamos también los campos estandar
-        title: editForm.title,
-        location: editForm.location,
-        type: editForm.type,
-        features: editForm.features ? editForm.features.split(',').map((f: string) => f.trim()) : [],
-        isFeatured: editForm.isFeatured
-      };
+      // Imágenes: enviamos los archivos nuevos y la lista de URLs existentes
+      const existingUrls: string[] = [];
+      if (editForm.images) {
+        editForm.images.forEach((img: any) => {
+          if (img && typeof img === 'object' && img.isNew && img.file) {
+            formData.append('imagenes', img.file);
+          } else if (typeof img === 'string') {
+            existingUrls.push(img);
+          }
+        });
+      }
+      // formData.append('imagenes_actuales', JSON.stringify(existingUrls));
+      formData.append('imagenes_borrar', JSON.stringify(imagesToDelete));
 
-      // Siempre usamos el endpoint de gestion para crear/actualizar
-      let url = `${API_BASE_URL}/back/api/propiedades/gestion/`;
-      let method = 'POST';
-
+      const url = `${API_BASE_URL}/back/api/propiedades/gestion/`;
       const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        method: 'POST',
+        body: formData,
       });
 
       if (!response.ok) {
@@ -1394,13 +1445,13 @@ export default function App() {
                                 className="flex-1 px-2 py-2 text-sm focus:outline-none"
                               />
                               <button
-                                onClick={() => setEditForm({ ...editForm, price: Math.max(0, editForm.price - 1) })}
+                                onClick={() => setEditForm({ ...editForm, price: Math.max(0, Number(editForm.price) - 1) })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Minus size={14} />
                               </button>
                               <button
-                                onClick={() => setEditForm({ ...editForm, price: editForm.price + 1 })}
+                                onClick={() => setEditForm({ ...editForm, price: Number(editForm.price) + 1 })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Plus size={14} />
@@ -1419,13 +1470,13 @@ export default function App() {
                                 className="flex-1 px-3 py-2 text-sm focus:outline-none"
                               />
                               <button
-                                onClick={() => setEditForm({ ...editForm, beds: Math.max(0, editForm.beds - 1) })}
+                                onClick={() => setEditForm({ ...editForm, beds: Math.max(0, Number(editForm.beds) - 1) })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Minus size={14} />
                               </button>
                               <button
-                                onClick={() => setEditForm({ ...editForm, beds: editForm.beds + 1 })}
+                                onClick={() => setEditForm({ ...editForm, beds: Number(editForm.beds) + 1 })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Plus size={14} />
@@ -1444,13 +1495,13 @@ export default function App() {
                                 className="flex-1 px-3 py-2 text-sm focus:outline-none"
                               />
                               <button
-                                onClick={() => setEditForm({ ...editForm, sqm: Math.max(0, editForm.sqm - 1) })}
+                                onClick={() => setEditForm({ ...editForm, sqm: Math.max(0, Number(editForm.sqm) - 1) })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Minus size={14} />
                               </button>
                               <button
-                                onClick={() => setEditForm({ ...editForm, sqm: editForm.sqm + 1 })}
+                                onClick={() => setEditForm({ ...editForm, sqm: Number(editForm.sqm) + 1 })}
                                 className="px-3 py-2 text-gray-500 hover:bg-gray-100 border-l border-gray-300 transition-colors"
                               >
                                 <Plus size={14} />
@@ -1570,46 +1621,117 @@ export default function App() {
 
                           {/* Imágenes de la propiedad */}
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Imágenes de la propiedad</label>
-                            {editForm.images && editForm.images.length > 0 ? (
-                              <div className="grid grid-cols-3 gap-2">
-                                {editForm.images.map((img: string, i: number) => (
-                                  <div key={i} className="relative group">
-                                    <img
-                                      src={img}
-                                      alt={`Imagen ${i + 1}`}
-                                      className="w-full h-20 object-cover rounded border border-gray-200 cursor-pointer"
-                                      onClick={() => setLightboxImage({ src: img, index: i })}
-                                    />
-                                    <button
-                                      onClick={() => {
-                                        const newImages = editForm.images.filter((_: string, idx: number) => idx !== i);
-                                        setEditForm({ ...editForm, images: newImages });
-                                      }}
-                                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Imágenes de la propiedad</label>
+                            
+                            <motion.div 
+                              layout
+                              className={`w-full min-h-[120px] bg-gray-50 rounded-lg border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-gray-100/80 ${dragActive ? 'border-blue-500 bg-blue-50 scale-[1.02] shadow-sm' : 'border-gray-300'}`}
+                              onDragEnter={handleDrag}
+                              onDragOver={handleDrag}
+                              onDragLeave={handleDrag}
+                              onDrop={handleDrop}
+                              onClick={() => fileInputRef.current?.click()}
+                              animate={{ borderColor: dragActive ? '#3b82f6' : '#d1d5db' }}
+                            >
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                onChange={(e) => handleFileUpload(e.target.files)}
+                                className="hidden"
+                              />
+                              
+                              <AnimatePresence mode="popLayout">
+                                {editForm.images && editForm.images.length > 0 ? (
+                                  <motion.div 
+                                    key="gallery"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="grid grid-cols-3 gap-3 w-full" 
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {editForm.images.map((img: any, i: number) => {
+                                      const imgSrc = typeof img === 'string' ? img : img.preview;
+                                      return (
+                                        <motion.div 
+                                          key={imgSrc + i}
+                                          layout
+                                          initial={{ scale: 0.8, opacity: 0 }}
+                                          animate={{ scale: 1, opacity: 1 }}
+                                          exit={{ scale: 0.8, opacity: 0 }}
+                                          whileHover={{ y: -2 }}
+                                          className="relative group aspect-square"
+                                        >
+                                          <img
+                                            src={imgSrc}
+                                            alt={`Imagen ${i + 1}`}
+                                            className="w-full h-full object-cover rounded-lg border border-gray-200 cursor-pointer shadow-sm group-hover:shadow-md transition-all"
+                                            onClick={() => setLightboxImage({ src: imgSrc, index: i })}
+                                          />
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const imgToDelete = editForm.images[i];
+                                              if (typeof imgToDelete === 'string' && originalEditFormRef.current.images?.includes(imgToDelete)) {
+                                                setImagesToDelete(prev => [...prev, imgToDelete]);
+                                              }
+                                              const newImages = editForm.images.filter((_: any, idx: number) => idx !== i);
+                                              setEditForm({ ...editForm, images: newImages });
+                                            }}
+                                            className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-600 hover:scale-110"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </motion.div>
+                                      );
+                                    })}
+                                    <motion.button 
+                                      layout
+                                      whileHover={{ scale: 1.05, backgroundColor: 'rgba(239, 246, 255, 1)' }}
+                                      whileTap={{ scale: 0.95 }}
+                                      className="w-full aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all group"
+                                      onClick={() => fileInputRef.current?.click()}
                                     >
-                                      <X size={12} />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="w-full h-24 bg-gray-100 rounded border border-gray-200 flex items-center justify-center text-gray-400">
-                                <ImageIcon size={32} />
-                              </div>
-                            )}
-                            {/* Botón añadir imagen */}
+                                      <Plus size={24} />
+                                      <span className="text-[10px] mt-1 font-medium">Añadir</span>
+                                    </motion.button>
+                                  </motion.div>
+                                ) : (
+                                  <motion.div 
+                                    key="empty"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="flex flex-col items-center text-gray-500"
+                                  >
+                                    <motion.div 
+                                      animate={{ y: [0, -4, 0] }}
+                                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                                      className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 text-blue-500"
+                                    >
+                                      <Upload size={24} />
+                                    </motion.div>
+                                    <p className="text-sm font-semibold text-gray-700">Arrastra imágenes aquí</p>
+                                    <p className="text-xs text-gray-400 mt-1">O haz clic para seleccionar archivos</p>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </motion.div>
+                            
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault();
                                 const url = prompt('Introduce la URL de la imagen:');
                                 if (url && url.trim()) {
                                   setEditForm({ ...editForm, images: [...(editForm.images || []), url.trim()] });
                                 }
                               }}
-                              className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                              className="mt-3 flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors px-1"
                             >
-                              <Plus size={16} />
-                              Añadir imagen
+                              <Link2 size={12} />
+                              Añadir desde URL
                             </button>
                           </div>
                         </div>
@@ -1954,39 +2076,61 @@ export default function App() {
           </div>
         </>
       )}
-      {/* Lightbox para ver imagen en grande */}
-      {lightboxImage && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center" onClick={() => setLightboxImage(null)}>
-          <div className="relative max-w-4xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={lightboxImage.src}
-              alt="Imagen en grande"
-              className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
-            />
-            {/* Botón cerrar */}
-            <button
-              onClick={() => setLightboxImage(null)}
-              className="absolute top-3 right-3 w-8 h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors"
+      <AnimatePresence>
+        {lightboxImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 backdrop-blur-sm" 
+            onClick={() => setLightboxImage(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center" 
+              onClick={(e) => e.stopPropagation()}
             >
-              <X size={18} />
-            </button>
-            {/* Botón eliminar */}
-            <div className="flex justify-center mt-4">
+              <img
+                src={lightboxImage.src}
+                alt="Imagen en grande"
+                className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+              {/* Botón cerrar */}
               <button
-                onClick={() => {
-                  const newImages = editForm.images.filter((_: string, idx: number) => idx !== lightboxImage.index);
-                  setEditForm({ ...editForm, images: newImages });
-                  setLightboxImage(null);
-                }}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md flex items-center gap-2 transition-colors cursor-pointer"
+                onClick={() => setLightboxImage(null)}
+                className="absolute -top-4 -right-4 w-10 h-10 bg-white text-gray-900 rounded-full flex items-center justify-center shadow-xl hover:bg-gray-100 transition-colors z-50 cursor-pointer"
               >
-                <X size={14} />
-                Eliminar imagen
+                <X size={24} />
               </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {/* Botón eliminar */}
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="mt-6"
+              >
+                <button
+                  onClick={() => {
+                    const imgToDelete = editForm.images[lightboxImage.index];
+                    if (typeof imgToDelete === 'string' && originalEditFormRef.current.images?.includes(imgToDelete)) {
+                      setImagesToDelete(prev => [...prev, imgToDelete]);
+                    }
+                    const newImages = editForm.images.filter((_: any, idx: number) => idx !== lightboxImage.index);
+                    setEditForm({ ...editForm, images: newImages });
+                    setLightboxImage(null);
+                  }}
+                  className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-full flex items-center gap-2 transition-all shadow-lg hover:shadow-red-500/30 cursor-pointer hover:scale-105"
+                >
+                  <Trash2 size={16} />
+                  Eliminar permanentemente
+                </button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Gestionar Campos Panel */}
       {showFieldsPanel && (
