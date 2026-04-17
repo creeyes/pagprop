@@ -30,9 +30,11 @@ const columns = [
   { key: 'beds', label: 'Habitaciones' },
   { key: 'sqm', label: 'Metros²' },
   { key: 'location', label: 'Zona' },
+  { key: 'address', label: 'Calle' },
   { key: 'type', label: 'Tipo' },
   { key: 'features', label: 'Características' },
   { key: 'images', label: 'Imágenes' },
+  { key: 'description', label: 'Descripción' },
 ];
 
 export default function App() {
@@ -323,6 +325,8 @@ export default function App() {
       features: row.features ? (Array.isArray(row.features) ? row.features.join(', ') : row.features) : '',
       isFeatured: row.isFeatured || false,
       images: row.images ? [...row.images] : [],
+      calle: row.address || '',
+      descripcion: row.description || '',
       estado: row.estado || 'Activo',
       animales: row.animales || 'No',
       balcon: row.balcon || 'No',
@@ -352,6 +356,8 @@ export default function App() {
       features: '',
       isFeatured: false,
       images: [],
+      calle: '',
+      descripcion: '',
       estado: 'Activo',
       animales: 'No',
       balcon: 'No',
@@ -435,7 +441,9 @@ export default function App() {
       formData.append('patioInterior', editForm.patioInterior);
       formData.append('title', editForm.title || '');
       formData.append('location', editForm.location || '');
+      formData.append('calle', editForm.calle || '');
       formData.append('type', editForm.type || '');
+      formData.append('descripcion', editForm.descripcion || '');
       formData.append('isFeatured', String(editForm.isFeatured));
       
       const featuresArr = editForm.features ? editForm.features.split(',').map((f: string) => f.trim()) : [];
@@ -1142,7 +1150,7 @@ export default function App() {
                             </div>
                           </td>
                         );
-                        if (key === 'images') return (
+                         if (key === 'images') return (
                           <td key="images" className="border-r border-gray-200 p-3 text-sm text-gray-800 text-center">
                             {row.images && row.images.length > 0 ? (
                               <div className="flex items-center gap-1">
@@ -1152,6 +1160,18 @@ export default function App() {
                             ) : (
                               <span className="text-gray-400 text-xs">0</span>
                             )}
+                          </td>
+                        );
+                        if (key === 'address') return (
+                          <td key="address" className="border-r border-gray-200 p-3 text-sm text-gray-800 italic">
+                            {row.address || '-'}
+                          </td>
+                        );
+                        if (key === 'description') return (
+                          <td key="description" className="border-r border-gray-200 p-3 text-sm text-gray-600 max-w-sm">
+                            <span className="line-clamp-2" title={row.description || '-'}>
+                              {row.description || '-'}
+                            </span>
                           </td>
                         );
 
@@ -1249,9 +1269,10 @@ export default function App() {
                         {expandedCards[index] && (
                           <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 text-sm">
                             <p className="text-gray-700"><span className="font-medium">Título:</span> {row.title || '-'}</p>
-                            <p className="text-gray-700"><span className="font-medium">Habitaciones:</span> {row.beds ?? '-'}</p>
                             <p className="text-gray-700"><span className="font-medium">Metros²:</span> {row.sqm ? `${row.sqm} m²` : '-'}</p>
+                            <p className="text-gray-700"><span className="font-medium">Calle:</span> {row.address || '-'}</p>
                             <p className="text-gray-700"><span className="font-medium">Tipo:</span> {row.type || '-'}</p>
+                            <p className="text-gray-700"><span className="font-medium">Descripción:</span> {row.description || '-'}</p>
                             <div className="text-gray-700">
                               <span className="font-medium">Características:</span>{' '}
                               {row.features && row.features.length > 0
@@ -1509,7 +1530,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Zona */}
+                           {/* Zona */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Zona</label>
                             <select
@@ -1524,6 +1545,30 @@ export default function App() {
                                 </option>
                               ))}
                             </select>
+                          </div>
+
+                          {/* Calle */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Calle / Dirección</label>
+                            <input
+                              type="text"
+                              value={editForm.calle}
+                              onChange={(e) => setEditForm({ ...editForm, calle: e.target.value })}
+                              placeholder="Ej: Calle Mayor 15"
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          {/* Descripción */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                            <textarea
+                              value={editForm.descripcion}
+                              onChange={(e) => setEditForm({ ...editForm, descripcion: e.target.value })}
+                              rows={4}
+                              placeholder="Describe la propiedad..."
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
                           </div>
 
                           {/* Características */}
