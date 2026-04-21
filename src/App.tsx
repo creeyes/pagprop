@@ -61,14 +61,6 @@ export default function App() {
   const [lightboxImage, setLightboxImage] = useState<{ src: string; index: number } | null>(null);
   const [panelTab, setPanelTab] = useState<'info' | 'associations' | 'notes'>('info');
 
-  // --- Notas ---
-  type Note = { id: string; title: string; content: string; createdAt: string; updatedAt: string };
-  const [propertyNotes, setPropertyNotes] = useState<Note[]>([]);
-  const [noteForm, setNoteForm] = useState({ title: '', content: '' });
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editNoteForm, setEditNoteForm] = useState({ title: '', content: '' });
-  const [noteSearchQuery, setNoteSearchQuery] = useState('');
   const [contactsOpen, setContactsOpen] = useState(true);
   const [trabajadoresOpen, setTrabajadoresOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -82,7 +74,6 @@ export default function App() {
     sqmMax: '',
     location: '',
     types: [] as string[],
-    isFeatured: null as boolean | null,
   };
 
   const loadSavedFilters = () => {
@@ -169,7 +160,6 @@ export default function App() {
       if (activeFilters.sqmMax && Number(row.sqm) > Number(activeFilters.sqmMax)) return false;
       if (activeFilters.location && row.location !== activeFilters.location) return false;
       if (activeFilters.types.length > 0 && !activeFilters.types.includes(row.type)) return false;
-      if (activeFilters.isFeatured !== null && row.isFeatured !== activeFilters.isFeatured) return false;
       return true;
     });
 
@@ -213,7 +203,6 @@ export default function App() {
     if (activeFilters.sqmMin || activeFilters.sqmMax) count++;
     if (activeFilters.location) count++;
     if (activeFilters.types.length > 0) count++;
-    if (activeFilters.isFeatured !== null) count++;
     return count;
   }, [activeFilters]);
 
@@ -276,39 +265,11 @@ export default function App() {
     setDraggedColumnIndex(index);
   };
 
-  // --- Notas: persistencia en localStorage ---
-  const loadNotes = (propertyId: string) => {
-    try {
-      const saved = localStorage.getItem(`propertyNotes_${propertyId}`);
-      if (saved) {
-        setPropertyNotes(JSON.parse(saved));
-      } else {
-        setPropertyNotes([]);
-      }
-    } catch {
-      setPropertyNotes([]);
-    }
-    setIsAddingNote(false);
-    setEditingNoteId(null);
-    setNoteSearchQuery('');
-  };
 
-  const saveNotes = (propertyId: string, notes: Note[]) => {
-    localStorage.setItem(`propertyNotes_${propertyId}`, JSON.stringify(notes));
-  };
-
-  const toggleFeaturedStatus = (property: any) => {
-    if (!property.id) return;
-
-    const newValue = !property.isFeatured;
-
-    // Actualización optimista local
-    setPropertiesData(prev =>
-      prev.map(p => p.id === property.id ? { ...p, isFeatured: newValue } : p)
-    );
-
-    // isFeatured es calculado en el servidor (precio > umbral), no se puede escribir.
-    // El cambio es solo local/visual hasta el próximo fetchProperties.
+  // El favorito ahora se cambia solo en el panel de edición para no sobrecargar el back
+  const toggleFavoriteStatus = (property: any) => {
+    // Función desactivada para toggle directo desde la tabla/lista a petición del usuario.
+    // Solo se permite desde el panel de edición.
   };
 
   const openEditPanel = (row: any) => {
@@ -323,10 +284,11 @@ export default function App() {
       location: row.location || '',
       type: row.type || '',
       features: row.features ? (Array.isArray(row.features) ? row.features.join(', ') : row.features) : '',
-      isFeatured: row.isFeatured || false,
+      isFavorite: row.isFavorite || false,
       images: row.images ? [...row.images] : [],
       calle: row.address || '',
       descripcion: row.description || '',
+      notas: row.notas || '',
       estado: row.estado || 'Activo',
       animales: row.animales || 'No',
       balcon: row.balcon || 'No',
@@ -340,7 +302,6 @@ export default function App() {
     setLightboxImage(null);
     setPanelTab('info');
     // Cargar notas de esta propiedad
-    if (row.id) loadNotes(row.id);
   };
 
   const openAddPanel = () => {
@@ -354,10 +315,11 @@ export default function App() {
       location: '',
       type: '',
       features: '',
-      isFeatured: false,
+      isFavorite: false,
       images: [],
       calle: '',
       descripcion: '',
+      notas: '',
       estado: 'Activo',
       animales: 'No',
       balcon: 'No',
@@ -444,7 +406,8 @@ export default function App() {
       formData.append('calle', editForm.calle || '');
       formData.append('type', editForm.type || '');
       formData.append('descripcion', editForm.descripcion || '');
-      formData.append('isFeatured', String(editForm.isFeatured));
+      formData.append('favorito', String(editForm.isFavorite));
+      formData.append('notas', editForm.notas || '');
       
       const featuresArr = editForm.features ? editForm.features.split(',').map((f: string) => f.trim()) : [];
       featuresArr.forEach((f: string) => formData.append('features', f));
@@ -985,31 +948,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Destacada */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Destacada</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === true ? null : true })}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === true
-                        ? 'bg-yellow-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                  >
-                    <Star size={12} />
-                    Sí
-                  </button>
-                  <button
-                    onClick={() => setFilters({ ...filters, isFeatured: filters.isFeatured === false ? null : false })}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${filters.isFeatured === false
-                        ? 'bg-gray-700 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
 
             </div>
 
@@ -1086,20 +1024,14 @@ export default function App() {
                           <td key="title" className="border-r border-gray-200 p-3 text-sm text-gray-800 max-w-xs">
                             <div className="flex items-start justify-between gap-2">
                               <span className="truncate flex-1" title={row.title || '-'}>{row.title || '-'}</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFeaturedStatus(row);
-                                }}
-                                className="focus:outline-none cursor-pointer hover:scale-110 transition-transform shrink-0 -mt-0.5"
-                                title={row.isFeatured ? "Quitar destacada" : "Marcar como destacada"}
-                              >
-                                {row.isFeatured ? (
-                                  <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
-                                ) : (
-                                  <Star size={16} className="text-gray-300 hover:text-yellow-400 inline" />
-                                )}
-                              </button>
+                              <div
+                                 className="shrink-0 -mt-0.5"
+                                 title={row.isFavorite ? "Favorito" : ""}
+                               >
+                                 {row.isFavorite && (
+                                   <Star size={16} className="text-yellow-500 fill-yellow-500 inline" />
+                                 )}
+                               </div>
                             </div>
                           </td>
                         );
@@ -1280,20 +1212,14 @@ export default function App() {
                                 : '—'}
                             </div>
                             <div className="text-gray-700 flex items-center gap-2">
-                              <span className="font-medium">Destacada:</span>{' '}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFeaturedStatus(row);
-                                }}
-                                className="flex items-center gap-1.5 focus:outline-none cursor-pointer hover:scale-105 transition-transform"
-                              >
-                                {row.isFeatured ? (
-                                  <><Star size={14} className="text-yellow-500 fill-yellow-500" /> Sí</>
-                                ) : (
-                                  <><Star size={14} className="text-gray-300 hover:text-yellow-400" /> No</>
-                                )}
-                              </button>
+                              <span className="font-medium">Favorito:</span>{' '}
+                              {row.isFavorite ? (
+                                <span className="inline-flex items-center gap-1.5 text-yellow-600 font-medium">
+                                  <Star size={14} className="fill-yellow-500" /> Sí
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">No</span>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1410,11 +1336,51 @@ export default function App() {
                   <h3 className="text-2xl font-bold text-gray-900">
                     {editingProperty?.isNew ? 'Nueva Propiedad' : (editForm.ghl_id ? String(editForm.ghl_id).substring(0, 8) : (editForm.id ? String(editForm.id) : ''))}
                   </h3>
+
+                  {/* Toggle Edición / Notas */}
+                  {!editingProperty?.isNew && (
+                    <div className="mt-4 flex p-1 bg-gray-100 rounded-lg w-full">
+                      <button
+                        onClick={() => setPanelTab(panelTab === 'notes' ? 'info' : 'notes')}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${
+                          panelTab === 'notes' 
+                          ? 'bg-white text-blue-600 shadow-sm' 
+                          : 'bg-white text-blue-600 shadow-sm'
+                        }`}
+                      >
+                        {panelTab === 'notes' ? (
+                          <>
+                            <Edit3 size={16} />
+                            Ver Edición
+                          </>
+                        ) : (
+                          <>
+                            <FileText size={16} />
+                            Ver Notas
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* ====== TAB INFO ====== */}
                 {panelTab === 'info' && (
                   <>
+                    {/* Favorito Toggle */}
+                    <div className="px-5 py-3 bg-blue-50/50 flex items-center justify-between border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <Star size={18} className={editForm.isFavorite ? "text-yellow-500 fill-yellow-500" : "text-gray-400"} />
+                        <span className="text-sm font-medium text-gray-700">Favorito</span>
+                      </div>
+                      <button
+                        onClick={() => setEditForm({ ...editForm, isFavorite: !editForm.isFavorite })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editForm.isFavorite ? 'bg-blue-600' : 'bg-gray-200'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.isFavorite ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+
                     {/* Todos los campos tab */}
                     <div className="px-5 border-b border-gray-200">
                       <span className="inline-block pb-2 border-b-2 border-blue-600 text-blue-600 text-sm font-medium">Todos los campos</span>
@@ -1559,6 +1525,7 @@ export default function App() {
                             />
                           </div>
 
+
                           {/* Descripción */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
@@ -1651,17 +1618,6 @@ export default function App() {
                                 <option value="No">No</option>
                               </select>
                             </div>
-                          </div>
-
-                          {/* Destacada */}
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={editForm.isFeatured}
-                              onChange={(e) => setEditForm({ ...editForm, isFeatured: e.target.checked })}
-                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                            />
-                            <label className="text-sm font-medium text-gray-700">Destacada</label>
                           </div>
 
                           {/* Imágenes de la propiedad */}
@@ -1859,192 +1815,23 @@ export default function App() {
                 {/* ====== TAB NOTAS ====== */}
                 {panelTab === 'notes' && (
                   <div className="px-5 pt-4 flex flex-col h-full">
-                    {/* Header notas */}
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Notas</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">Notas de la Propiedad</h3>
                     </div>
 
-                    {/* Botón añadir nota */}
-                    {!isAddingNote ? (
-                      <button
-                        onClick={() => { setIsAddingNote(true); setNoteForm({ title: '', content: '' }); }}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-blue-300 bg-blue-50 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors mb-3 cursor-pointer"
-                      >
-                        <Plus size={16} />
-                        Añadir nota
-                      </button>
-                    ) : (
-                      <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-4 mb-3 space-y-3">
-                        <input
-                          type="text"
-                          placeholder="Título de la nota"
-                          value={noteForm.title}
-                          onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <textarea
-                          placeholder="Escribe tu nota aquí..."
-                          value={noteForm.content}
-                          onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })}
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setIsAddingNote(false)}
-                            className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (!noteForm.title.trim() && !noteForm.content.trim()) return;
-                              const now = new Date().toISOString();
-                              const newNote: Note = {
-                                id: Date.now().toString(),
-                                title: noteForm.title.trim() || 'Sin título',
-                                content: noteForm.content.trim(),
-                                createdAt: now,
-                                updatedAt: now,
-                              };
-                              const updated = [newNote, ...propertyNotes];
-                              setPropertyNotes(updated);
-                              saveNotes(editForm.id, updated);
-                              setNoteForm({ title: '', content: '' });
-                              setIsAddingNote(false);
-                            }}
-                            disabled={!noteForm.title.trim() && !noteForm.content.trim()}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Guardar
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Buscador */}
-                    {propertyNotes.length > 0 && (
-                      <div className="relative mb-4">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Buscar notas..."
-                          value={noteSearchQuery}
-                          onChange={(e) => setNoteSearchQuery(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                    )}
-
-                    {/* Lista de notas o estado vacío */}
-                    {propertyNotes.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center py-12">
-                        <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-5">
-                          <FileText size={28} className="text-blue-600" />
-                        </div>
-                        <p className="text-base font-semibold text-gray-900 mb-1">No hay notas</p>
-                        <p className="text-sm text-gray-400 mb-5">Añade una nota para esta propiedad</p>
-                        <button
-                          onClick={() => { setIsAddingNote(true); setNoteForm({ title: '', content: '' }); }}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Plus size={16} />
-                          Añadir Primera Nota
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 flex-1 overflow-y-auto pb-4">
-                        {propertyNotes
-                          .filter(n => {
-                            if (!noteSearchQuery) return true;
-                            const q = noteSearchQuery.toLowerCase();
-                            return n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q);
-                          })
-                          .map(note => (
-                            <div key={note.id} className="border border-gray-200 rounded-lg bg-white p-4 hover:shadow-sm transition-shadow">
-                              {editingNoteId === note.id ? (
-                                /* Modo edición */
-                                <div className="space-y-3">
-                                  <input
-                                    type="text"
-                                    value={editNoteForm.title}
-                                    onChange={(e) => setEditNoteForm({ ...editNoteForm, title: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  />
-                                  <textarea
-                                    value={editNoteForm.content}
-                                    onChange={(e) => setEditNoteForm({ ...editNoteForm, content: e.target.value })}
-                                    rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                  />
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={() => setEditingNoteId(null)}
-                                      className="px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
-                                    >
-                                      Cancelar
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        const updated = propertyNotes.map(n =>
-                                          n.id === note.id
-                                            ? { ...n, title: editNoteForm.title.trim() || 'Sin título', content: editNoteForm.content.trim(), updatedAt: new Date().toISOString() }
-                                            : n
-                                        );
-                                        setPropertyNotes(updated);
-                                        saveNotes(editForm.id, updated);
-                                        setEditingNoteId(null);
-                                      }}
-                                      className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors cursor-pointer"
-                                    >
-                                      Guardar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                /* Modo visualización */
-                                <>
-                                  <div className="flex items-start justify-between gap-2">
-                                    <h4 className="text-sm font-semibold text-gray-900">{note.title}</h4>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <button
-                                        onClick={() => { setEditingNoteId(note.id); setEditNoteForm({ title: note.title, content: note.content }); }}
-                                        className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors cursor-pointer"
-                                        title="Editar"
-                                      >
-                                        <Edit3 size={14} />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (confirm('¿Eliminar esta nota?')) {
-                                            const updated = propertyNotes.filter(n => n.id !== note.id);
-                                            setPropertyNotes(updated);
-                                            saveNotes(editForm.id, updated);
-                                          }
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                                        title="Eliminar"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {note.content && (
-                                    <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{note.content}</p>
-                                  )}
-                                  <p className="text-xs text-gray-400 mt-2">
-                                    {new Date(note.updatedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                  </p>
-                                </>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    )}
+                    {/* Notas del Backend (Principal) */}
+                    <div className="flex-1 overflow-y-auto h-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-3">Notas generales (Sincronizadas con el sistema)</label>
+                      <textarea
+                        value={editForm.notas}
+                        onChange={(e) => setEditForm({ ...editForm, notas: e.target.value })}
+                        className="w-full h-[calc(100%-40px)] px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-yellow-50/20 mb-4"
+                        placeholder="Escribe aquí las notas generales de la propiedad..."
+                      />
                   </div>
-                )}
-
-              </div>
+                </div>
+              )}
+            </div>
 
               {/* Footer con botones */}
               <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200">
